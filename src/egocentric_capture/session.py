@@ -598,6 +598,9 @@ class CaptureEngine:
                 for source in self._sources
             },
             event_loop_lag_ms=self._event_loop_lag_ms,
+            writer_bytes_per_second=(
+                writer.bytes_per_second if writer else 0.0
+            ),
             preview_cross_camera_skew_ms=(
                 (max(rendered_source_times) - min(rendered_source_times))
                 / 1_000_000

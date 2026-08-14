@@ -12,10 +12,10 @@ from dataclasses import field as dataclass_field
 from pathlib import Path
 from typing import Any, Callable
 
+import numpy as np
 import shiboken6
-from PySide6.QtCore import QRunnable, Qt, QUrl, Signal
+from PySide6.QtCore import QObject, QRunnable, Signal
 from PySide6.QtQuick import QQuickItem, QQuickView, QQuickWindow
-from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
 from ..models import CameraFrame, PreviewHealth
 
@@ -27,10 +27,38 @@ HARDWARE_DECODER_CANDIDATES = (
     "nvh264dec",
 )
 SOFTWARE_DECODER = "avdec_h264"
+_QML_TYPE_REGISTRATION_SINK: Any = None
 
 
 class PreviewBackendError(RuntimeError):
     """GStreamer Qt6 预览后端不可用。"""
+
+
+def initialize_gstreamer_qml() -> None:
+    global _QML_TYPE_REGISTRATION_SINK
+
+    _ensure_system_typelib_path()
+    try:
+        import gi
+
+        gi.require_version("Gst", "1.0")
+        from gi.repository import Gst
+    except (ImportError, ValueError) as exc:
+        raise PreviewBackendError(
+            "缺少 PyGObject/GStreamer GI 绑定，无法注册 QML 视频类型"
+        ) from exc
+    Gst.init(None)
+    if Gst.ElementFactory.find("qml6glsink") is None:
+        raise PreviewBackendError(
+            "缺少 qml6glsink，请安装 gstreamer1.0-qt6"
+        )
+    if _QML_TYPE_REGISTRATION_SINK is None:
+        _QML_TYPE_REGISTRATION_SINK = Gst.ElementFactory.make(
+            "qml6glsink",
+            "qml-type-registration-sink",
+        )
+    if _QML_TYPE_REGISTRATION_SINK is None:
+        raise PreviewBackendError("qml6glsink 无法注册 QML 视频类型")
 
 
 def decoder_candidates(preference: str) -> tuple[str, ...]:
@@ -78,6 +106,44 @@ def configure_preview_sink(
     element.set_property("qos", False)
     element.set_property("enable-last-sample", False)
     element.set_property("throttle-time", 0)
+
+
+def cockpit_layout(
+    width: int,
+    height: int,
+    primary_camera: str = "cam_a",
+) -> dict[str, dict[str, int | float]]:
+    cameras = ("cam_a", "cam_b", "cam_c", "cam_d")
+    thumbnail_width = max(120, int(width * 0.12))
+    thumbnail_height = max(68, int(thumbnail_width * 9 / 16))
+    gap = max(6, int(width * 0.006))
+    auxiliaries = [camera for camera in cameras if camera != primary_camera]
+    total_width = len(auxiliaries) * thumbnail_width + max(
+        0,
+        len(auxiliaries) - 1,
+    ) * gap
+    start_x = (width - total_width) // 2
+    y = height - thumbnail_height - max(14, int(height * 0.025))
+    layout: dict[str, dict[str, int | float]] = {
+        primary_camera: {
+            "alpha": 1.0,
+            "x": 0,
+            "y": 0,
+            "width": width,
+            "height": height,
+            "z": 0,
+        }
+    }
+    for index, camera in enumerate(auxiliaries):
+        layout[camera] = {
+            "alpha": 1.0,
+            "x": start_x + index * (thumbnail_width + gap),
+            "y": y,
+            "width": thumbnail_width,
+            "height": thumbnail_height,
+            "z": index + 1,
+        }
+    return layout
 
 
 @dataclass(slots=True)
@@ -139,9 +205,15 @@ class _GstreamerBackend:
         self,
         config: dict[str, Any],
         health_callback: Callable[[PreviewHealth], None],
+        analysis_callback: Callable[[np.ndarray, int], None] | None = None,
     ) -> None:
         self.config = config
         self.health_callback = health_callback
+        self.analysis_callback = analysis_callback
+        self.analysis_camera = str(config.get("analysis_camera", "cam_a"))
+        self.analysis_width = max(160, int(config.get("analysis_width", 640)))
+        self.analysis_height = max(90, int(config.get("analysis_height", 360)))
+        self.analysis_fps = max(1, int(config.get("analysis_fps", 12)))
         self.max_latency_ms = float(config.get("max_latency_ms", 250))
         self.software_threads = int(config.get("software_decoder_threads", 2))
         self.failure_policy = str(
@@ -255,6 +327,18 @@ class _GstreamerBackend:
         ):
             if Gst.ElementFactory.find(required) is None:
                 raise PreviewBackendError(f"缺少 GStreamer 元素: {required}")
+        if self.analysis_callback is not None:
+            for required in (
+                "tee",
+                "videoconvert",
+                "videoscale",
+                "videorate",
+                "appsink",
+            ):
+                if Gst.ElementFactory.find(required) is None:
+                    raise PreviewBackendError(
+                        f"手势分析缺少 GStreamer 元素: {required}"
+                    )
         candidates = decoder_candidates(self.decoder_preference)
         for index, name in enumerate(candidates):
             if Gst.ElementFactory.find(name) is None:
@@ -334,12 +418,14 @@ class _GstreamerBackend:
             ):
                 raise PreviewBackendError(f"{camera} 无法连接到 GPU 合成器")
             branch.mixer_pad = mixer_pad
-        self.set_mode(False, "cam_a")
+        self.set_cockpit_layout(
+            str(self.config.get("primary_camera", "cam_a"))
+        )
 
     def _build_branch(self, camera: str) -> _Branch:
         Gst = self._Gst
         branch_bin = Gst.Bin.new(f"{camera}-preview-bin")
-        elements = {
+        elements: dict[str, Any] = {
             "appsrc": Gst.ElementFactory.make("appsrc", f"{camera}-appsrc"),
             "parser": Gst.ElementFactory.make("h264parse", f"{camera}-parser"),
             "decoder": Gst.ElementFactory.make(
@@ -353,6 +439,40 @@ class _GstreamerBackend:
                 f"{camera}-convert",
             ),
         }
+        analysis_enabled = (
+            self.analysis_callback is not None
+            and camera == self.analysis_camera
+        )
+        if analysis_enabled:
+            elements.update(
+                {
+                    "tee": Gst.ElementFactory.make("tee", f"{camera}-tee"),
+                    "analysis_queue": Gst.ElementFactory.make(
+                        "queue",
+                        f"{camera}-analysis-queue",
+                    ),
+                    "analysis_rate": Gst.ElementFactory.make(
+                        "videorate",
+                        f"{camera}-analysis-rate",
+                    ),
+                    "analysis_scale": Gst.ElementFactory.make(
+                        "videoscale",
+                        f"{camera}-analysis-scale",
+                    ),
+                    "analysis_convert": Gst.ElementFactory.make(
+                        "videoconvert",
+                        f"{camera}-analysis-convert",
+                    ),
+                    "analysis_caps": Gst.ElementFactory.make(
+                        "capsfilter",
+                        f"{camera}-analysis-caps",
+                    ),
+                    "analysis_sink": Gst.ElementFactory.make(
+                        "appsink",
+                        f"{camera}-analysis-sink",
+                    ),
+                }
+            )
         missing = [name for name, element in elements.items() if element is None]
         if missing:
             raise PreviewBackendError(
@@ -391,22 +511,77 @@ class _GstreamerBackend:
             self.latest_frame_only,
             self.decoded_queue_frames,
         )
+        if analysis_enabled:
+            analysis_queue = elements["analysis_queue"]
+            configure_latest_frame_queue(analysis_queue, True)
+            elements["analysis_rate"].set_property("drop-only", True)
+            elements["analysis_caps"].set_property(
+                "caps",
+                Gst.Caps.from_string(
+                    "video/x-raw,format=RGB,"
+                    f"width={self.analysis_width},"
+                    f"height={self.analysis_height},"
+                    f"framerate={self.analysis_fps}/1"
+                ),
+            )
+            analysis_sink = elements["analysis_sink"]
+            analysis_sink.set_property("emit-signals", True)
+            analysis_sink.set_property("sync", False)
+            analysis_sink.set_property("max-buffers", 1)
+            analysis_sink.set_property("drop", True)
+            analysis_sink.connect(
+                "new-sample",
+                self._on_analysis_sample,
+            )
         for element in elements.values():
             branch_bin.add(element)
-        ordered = [
-            appsrc,
-            parser,
-            decoder,
-            gst_queue,
-            elements["upload"],
-            elements["convert"],
-        ]
-        for previous, current in zip(ordered, ordered[1:], strict=False):
-            if not previous.link(current):
-                raise PreviewBackendError(
-                    f"{camera} 无法连接 "
-                    f"{previous.get_name()} → {current.get_name()}"
-                )
+        if analysis_enabled:
+            if not appsrc.link(parser) or not parser.link(decoder):
+                raise PreviewBackendError(f"{camera} 无法连接解码输入")
+            tee = elements["tee"]
+            if not decoder.link(tee) or not tee.link(gst_queue):
+                raise PreviewBackendError(f"{camera} 无法连接预览分支")
+            preview_ordered = [
+                gst_queue,
+                elements["upload"],
+                elements["convert"],
+            ]
+            analysis_ordered = [
+                elements["analysis_queue"],
+                elements["analysis_rate"],
+                elements["analysis_scale"],
+                elements["analysis_convert"],
+                elements["analysis_caps"],
+                elements["analysis_sink"],
+            ]
+            if not tee.link(analysis_ordered[0]):
+                raise PreviewBackendError(f"{camera} 无法连接手势分析分支")
+            for ordered in (preview_ordered, analysis_ordered):
+                for previous, current in zip(
+                    ordered,
+                    ordered[1:],
+                    strict=False,
+                ):
+                    if not previous.link(current):
+                        raise PreviewBackendError(
+                            f"{camera} 无法连接 "
+                            f"{previous.get_name()} → {current.get_name()}"
+                        )
+        else:
+            ordered = [
+                appsrc,
+                parser,
+                decoder,
+                gst_queue,
+                elements["upload"],
+                elements["convert"],
+            ]
+            for previous, current in zip(ordered, ordered[1:], strict=False):
+                if not previous.link(current):
+                    raise PreviewBackendError(
+                        f"{camera} 无法连接 "
+                        f"{previous.get_name()} → {current.get_name()}"
+                    )
         parser.get_static_pad("src").add_probe(
             Gst.PadProbeType.BUFFER,
             self._on_stage_buffer,
@@ -446,6 +621,26 @@ class _GstreamerBackend:
         if self.sink is None:
             raise PreviewBackendError("预览 sink 尚未创建")
         _set_gpointer_property(self.sink, "widget", item)
+
+    def set_cockpit_layout(self, primary_camera: str = "cam_a") -> None:
+        if primary_camera not in self.CAMERAS:
+            primary_camera = "cam_a"
+        layout = cockpit_layout(
+            self.mosaic_width,
+            self.mosaic_height,
+            primary_camera,
+        )
+        for name, branch in self.branches.items():
+            pad = branch.mixer_pad
+            if pad is None:
+                continue
+            values = layout[name]
+            pad.set_property("alpha", values["alpha"])
+            pad.set_property("xpos", values["x"])
+            pad.set_property("ypos", values["y"])
+            pad.set_property("width", values["width"])
+            pad.set_property("height", values["height"])
+            pad.set_property("zorder", values["z"])
 
     def set_mode(self, single: bool, camera: str) -> None:
         if camera not in self.CAMERAS:
@@ -678,6 +873,30 @@ class _GstreamerBackend:
             if len(self._frame_metadata[frame.camera]) > 512:
                 oldest_pts = min(self._frame_metadata[frame.camera])
                 self._frame_metadata[frame.camera].pop(oldest_pts, None)
+
+    def _on_analysis_sample(self, sink: Any) -> Any:
+        Gst = self._Gst
+        sample = sink.emit("pull-sample")
+        if sample is None:
+            return Gst.FlowReturn.OK
+        buffer = sample.get_buffer()
+        caps = sample.get_caps()
+        if buffer is None or caps is None or self.analysis_callback is None:
+            return Gst.FlowReturn.OK
+        structure = caps.get_structure(0)
+        width = int(structure.get_value("width"))
+        height = int(structure.get_value("height"))
+        success, mapping = buffer.map(Gst.MapFlags.READ)
+        if not success:
+            return Gst.FlowReturn.OK
+        try:
+            expected = width * height * 3
+            array = np.frombuffer(mapping.data, dtype=np.uint8, count=expected)
+            image = array.reshape((height, width, 3)).copy()
+        finally:
+            buffer.unmap(mapping)
+        self.analysis_callback(image, time.monotonic_ns())
+        return Gst.FlowReturn.OK
 
     def _on_branch_buffer(
         self,
@@ -920,67 +1139,29 @@ class _GstreamerBackend:
         )
 
 
-class GstreamerPreviewWidget(QWidget):
+class GstreamerPreviewController(QObject):
     health_changed = Signal(object)
 
-    def __init__(self, config: dict[str, Any], parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        config: dict[str, Any],
+        quick_view: QQuickView,
+        video_item: QQuickItem,
+        *,
+        analysis_callback: Callable[[np.ndarray, int], None] | None = None,
+        parent: QObject | None = None,
+    ) -> None:
         super().__init__(parent)
-        self.backend: _GstreamerBackend | None = None
-        self.quick_view: QQuickView | None = None
-        self.quick_container: QWidget | None = None
-        self._root_item: QQuickItem | None = None
+        self.quick_view = quick_view
+        self.backend = _GstreamerBackend(
+            config,
+            self.health_changed.emit,
+            analysis_callback,
+        )
+        self.backend.bind_widget(video_item)
         self._start_job: _StartPipelineJob | None = None
-        self._error_message = ""
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        try:
-            self.backend = _GstreamerBackend(
-                config,
-                self.health_changed.emit,
-            )
-            quick_view = QQuickView()
-            quick_view.setResizeMode(
-                QQuickView.ResizeMode.SizeRootObjectToView
-            )
-            qml_path = (
-                Path(__file__).resolve().parents[1]
-                / "assets"
-                / "preview_grid.qml"
-            )
-            quick_view.setSource(QUrl.fromLocalFile(str(qml_path)))
-            if quick_view.status() == QQuickView.Status.Error:
-                details = "; ".join(
-                    error.toString() for error in quick_view.errors()
-                )
-                raise PreviewBackendError(f"QML 加载失败: {details}")
-            root = quick_view.rootObject()
-            if not isinstance(root, QQuickItem):
-                raise PreviewBackendError("预览 QML 根对象不是 QQuickItem")
-            video_item = root.findChild(QQuickItem, "mosaicVideo")
-            if video_item is None:
-                raise PreviewBackendError("QML 缺少 mosaicVideo")
-            self.backend.bind_widget(video_item)
-            quick_container = QWidget.createWindowContainer(quick_view, self)
-            quick_container.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-            self.quick_view = quick_view
-            self.quick_container = quick_container
-            self._root_item = root
-            layout.addWidget(quick_container)
-        except Exception as exc:
-            self._error_message = str(exc)
-            if self.backend is not None:
-                self.backend.stop()
-                self.backend = None
-            label = QLabel(f"预览异常\n{exc}", self)
-            label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            label.setStyleSheet(
-                "background:#080a0c;color:#ef8585;border:1px solid #303840;"
-            )
-            layout.addWidget(label)
 
     def start(self) -> None:
-        if self.backend is None or self.quick_view is None:
-            return
         self._start_job = _StartPipelineJob(self.backend)
         self.quick_view.scheduleRenderJob(
             self._start_job,
@@ -988,48 +1169,19 @@ class GstreamerPreviewWidget(QWidget):
         )
 
     def submit(self, frame: CameraFrame) -> None:
-        if self.backend is not None:
-            self.backend.submit(frame)
+        self.backend.submit(frame)
 
-    def set_mode(self, single: bool, camera: str) -> None:
-        if self._root_item is None:
-            return
-        if self.backend is not None:
-            self.backend.set_mode(single, camera)
-        self._root_item.setProperty("singleMode", single)
-        self._root_item.setProperty("selectedCamera", camera)
+    def set_cockpit_layout(self, primary_camera: str = "cam_a") -> None:
+        self.backend.set_cockpit_layout(primary_camera)
 
-    def set_health(self, health: PreviewHealth) -> None:
-        if self._root_item is None:
-            return
-        tile = self._root_item.findChild(
-            QQuickItem,
-            f"{health.camera}Tile",
-        )
-        if tile is not None:
-            tile.setProperty("previewHealthy", health.healthy)
-            tile.setProperty("previewMessage", health.message)
+    def set_health(self, _health: PreviewHealth) -> None:
+        return
 
     def health(self) -> dict[str, PreviewHealth]:
-        if self.backend is not None:
-            return self.backend.health()
-        return {
-            camera: PreviewHealth(
-                camera=camera,
-                submitted_count=0,
-                rendered_count=0,
-                last_submitted_sequence=None,
-                last_rendered_sequence=None,
-                latency_ms=0.0,
-                healthy=False,
-                message=self._error_message or "预览后端不可用",
-            )
-            for camera in _GstreamerBackend.CAMERAS
-        }
+        return self.backend.health()
 
     def stop(self) -> None:
-        if self.backend is not None:
-            self.backend.stop()
+        self.backend.stop()
 
 
 def _set_gpointer_property(element: Any, name: str, item: QQuickItem) -> None:

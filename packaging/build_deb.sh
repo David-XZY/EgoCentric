@@ -3,7 +3,7 @@ set -euo pipefail
 
 # 从项目根目录执行，生成自带 Python 3.12 运行时的 amd64 安装包。
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-VERSION="${VERSION:-0.1.0}"
+VERSION="${VERSION:-0.2.0}"
 ARCH="${ARCH:-$(dpkg --print-architecture)}"
 VENV_PYTHON="${VENV_PYTHON:-$ROOT/.venv/bin/python}"
 BUILD_ROOT="$ROOT/build/deb"
@@ -69,7 +69,7 @@ Installed-Size: $INSTALLED_SIZE
 Depends: libc6, libstdc++6, libgl1, libglib2.0-0, libusb-1.0-0, libxcb-cursor0, libcairo2, libgirepository-2.0-0, gstreamer1.0-qt6, gstreamer1.0-plugins-base, gstreamer1.0-plugins-good, gstreamer1.0-plugins-bad, gstreamer1.0-libav, gstreamer1.0-gl, gir1.2-gstreamer-1.0, gir1.2-gst-plugins-base-1.0, mesa-va-drivers, libva2
 Description: 统一多模态原始数据采集系统
  同步采集四路 OAK H.264 视频、OAK IMU、8 通道 EMG 和手环 IMU，
- 使用分段 MCAP 与 Protobuf 保存权威原始数据。
+ 使用 QML 数据驾驶舱、MediaPipe 手势识别、分段 MCAP 与 Protobuf。
 EOF
 
 mkdir -p "$ROOT/dist"

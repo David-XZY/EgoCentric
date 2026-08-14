@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "egocentric-capture"
-version = "0.1.0"
+version = "0.2.0"
 description = "OAK 四目、肌电和双 IMU 的统一原始数据采集应用"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
@@ -14,13 +14,13 @@ dependencies = [
   "foxglove-schemas-protobuf==0.4.0",
   "mcap==1.4.0",
   "mcap-protobuf-support==0.5.4",
+  "mediapipe==1.0.0",
   "numpy>=1.26",
   "opencv-contrib-python>=4.10",
   "protobuf>=7.35,<8",
   "pyarrow>=18,<24",
   "PyGObject>=3.52,<4",
   "PySide6==6.10.2",
-  "pyqtgraph>=0.14",
   "pyserial>=3.5",
   "PyYAML>=6",
 ]
@@ -45,6 +45,7 @@ egocentric_capture = [
   "config/*.yaml",
   "schemas/*.proto",
   "assets/*",
+  "assets/models/*",
 ]
 
 [tool.pytest.ini_options]

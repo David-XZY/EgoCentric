@@ -1,3 +1,11 @@
-from .gstreamer import GstreamerPreviewWidget, PreviewBackendError
+from .gstreamer import (
+    GstreamerPreviewController,
+    PreviewBackendError,
+    initialize_gstreamer_qml,
+)
 
-__all__ = ["GstreamerPreviewWidget", "PreviewBackendError"]
+__all__ = [
+    "GstreamerPreviewController",
+    "PreviewBackendError",
+    "initialize_gstreamer_qml",
+]

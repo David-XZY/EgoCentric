@@ -171,3 +171,32 @@ def test_writer_stop_waits_for_inflight_submit_before_sentinel(tmp_path) -> None
     assert writer.stop() == writer.segments
     with pytest.raises(RuntimeError, match="未运行"):
         writer.submit_sample(event)
+
+
+def test_writer_reports_real_file_throughput(tmp_path) -> None:
+    writer = SegmentedMcapWriter(
+        tmp_path,
+        queue_size=100,
+        chunk_size_bytes=64,
+        segment_duration_s=60,
+        segment_size_bytes=1024**3,
+        fsync_interval_s=0.01,
+    )
+    mapper = HostClockMapper()
+    writer.start()
+    for index in range(40):
+        writer.submit_sample(
+            SystemEvent(
+                "info",
+                f"throughput-{index}",
+                "吞吐统计测试" * 20,
+                mapper.stamp(),
+            )
+        )
+        time.sleep(0.003)
+    deadline = time.monotonic() + 2
+    while writer.queue_depth and time.monotonic() < deadline:
+        time.sleep(0.01)
+
+    assert writer.bytes_per_second > 0
+    writer.stop()

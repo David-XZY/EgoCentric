@@ -98,6 +98,25 @@ class WearableImuSample:
 
 
 @dataclass(frozen=True, slots=True)
+class TrackedHand:
+    handedness: str
+    landmarks: tuple[tuple[float, float, float], ...]
+    world_landmarks: tuple[tuple[float, float, float], ...]
+    gesture: str
+    confidence: float
+    stale_ms: float = 0.0
+
+
+@dataclass(frozen=True, slots=True)
+class GestureFrame:
+    monotonic_ns: int
+    hands: tuple[TrackedHand, ...] = ()
+    inference_ms: float = 0.0
+    healthy: bool = True
+    message: str = ""
+
+
+@dataclass(frozen=True, slots=True)
 class SystemEvent:
     level: str
     code: str
@@ -134,6 +153,7 @@ class HealthSnapshot:
     source_reconnects: dict[str, int] = field(default_factory=dict)
     event_loop_lag_ms: float = 0.0
     preview_cross_camera_skew_ms: float = 0.0
+    writer_bytes_per_second: float = 0.0
 
 
 @dataclass(frozen=True, slots=True)

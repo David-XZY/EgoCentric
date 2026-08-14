@@ -61,6 +61,11 @@ def main() -> int:
             "glupload",
             "glcolorconvert",
             "qml6glsink",
+            "tee",
+            "videoconvert",
+            "videoscale",
+            "videorate",
+            "appsink",
         )
         if Gst.ElementFactory.find(name) is None
     ]
@@ -71,8 +76,23 @@ def main() -> int:
     decoder = select_decoder(Gst)
     if decoder is None:
         raise RuntimeError("缺少可用的 GStreamer H.264 解码器")
+    import mediapipe
+
+    model = (
+        Path(__file__).resolve().parents[1]
+        / "src"
+        / "egocentric_capture"
+        / "assets"
+        / "models"
+        / "gesture_recognizer.task"
+    )
+    if not model.is_file():
+        raise RuntimeError("缺少 MediaPipe Gesture Recognizer 模型")
     print(
-        f"预览运行时检查通过: Qt {PySide6.__version__}, decoder={decoder}"
+        "预览运行时检查通过: "
+        f"Qt {PySide6.__version__}, "
+        f"MediaPipe {mediapipe.__version__}, "
+        f"decoder={decoder}"
     )
     return 0
 

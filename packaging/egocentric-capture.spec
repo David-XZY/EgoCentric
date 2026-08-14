@@ -19,11 +19,26 @@ datas = [
         "egocentric_capture/schemas",
     ),
     (
-        str(source / "egocentric_capture" / "assets" / "preview_grid.qml"),
+        str(source / "egocentric_capture" / "assets" / "cockpit.qml"),
         "egocentric_capture/assets",
+    ),
+    (
+        str(source / "egocentric_capture" / "assets" / "cockpit_demo.png"),
+        "egocentric_capture/assets",
+    ),
+    (
+        str(
+            source
+            / "egocentric_capture"
+            / "assets"
+            / "models"
+            / "gesture_recognizer.task"
+        ),
+        "egocentric_capture/assets/models",
     ),
 ]
 datas += collect_data_files("foxglove_schemas_protobuf")
+datas += collect_data_files("mediapipe")
 
 hiddenimports = []
 for package in (
@@ -31,6 +46,7 @@ for package in (
     "mcap",
     "mcap_protobuf",
     "gi",
+    "mediapipe",
 ):
     hiddenimports += collect_submodules(package)
 hiddenimports += [
@@ -46,7 +62,6 @@ hiddenimports += [
     "pyarrow",
     "pyarrow._parquet",
     "pyarrow.parquet",
-    "pyqtgraph",
     "serial.tools.list_ports",
 ]
 
@@ -61,11 +76,8 @@ analysis = Analysis(
     runtime_hooks=[],
     excludes=[
         "libemg",
-        "mediapipe",
-        "matplotlib",
         "onnxruntime",
         "pandas",
-        "PIL",
         "pytest",
         "scipy",
         "sklearn",

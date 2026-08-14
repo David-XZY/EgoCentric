@@ -4,6 +4,7 @@ import os
 import queue
 import threading
 import time
+from collections import deque
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, BinaryIO, Callable
@@ -115,6 +116,8 @@ class SegmentedMcapWriter:
         self._accepted: dict[str, _CounterState] = {}
         self._persisted: dict[str, _CounterState] = {}
         self._record_counts: dict[str, int] = {}
+        self._persisted_bytes = 0
+        self._throughput_samples: deque[tuple[float, int]] = deque(maxlen=128)
 
     @property
     def running(self) -> bool:
@@ -139,6 +142,24 @@ class SegmentedMcapWriter:
     def record_counts(self) -> dict[str, int]:
         with self._metrics_lock:
             return dict(self._record_counts)
+
+    @property
+    def bytes_per_second(self) -> float:
+        now = time.monotonic()
+        with self._metrics_lock:
+            while (
+                len(self._throughput_samples) > 1
+                and now - self._throughput_samples[0][0] > 5.0
+            ):
+                self._throughput_samples.popleft()
+            if len(self._throughput_samples) < 2:
+                return 0.0
+            started_at, started_bytes = self._throughput_samples[0]
+            ended_at, ended_bytes = self._throughput_samples[-1]
+        elapsed = ended_at - started_at
+        if elapsed <= 0:
+            return 0.0
+        return max(0.0, (ended_bytes - started_bytes) / elapsed)
 
     @property
     def sequence_stats(self) -> dict[str, dict[str, int | None]]:
@@ -270,6 +291,7 @@ class SegmentedMcapWriter:
                         )
                         opened_monotonic = time.monotonic()
                         last_fsync = opened_monotonic
+                    bytes_before = file.tell()
                     for record in records:
                         writer.write_message(
                             record.topic,
@@ -293,6 +315,7 @@ class SegmentedMcapWriter:
                         if isinstance(item, McapRecord)
                         else _sample_sequence(item)
                     )
+                    bytes_after = file.tell()
                     with self._metrics_lock:
                         self._persisted.setdefault(
                             count_key, _CounterState()
@@ -301,6 +324,13 @@ class SegmentedMcapWriter:
                             self._record_counts[record.topic] = (
                                 self._record_counts.get(record.topic, 0) + 1
                             )
+                        self._persisted_bytes += max(
+                            0,
+                            bytes_after - bytes_before,
+                        )
+                        self._throughput_samples.append(
+                            (time.monotonic(), self._persisted_bytes)
+                        )
                     if time.monotonic() - last_fsync >= self.fsync_interval_s:
                         file.flush()
                         os.fsync(file.fileno())
