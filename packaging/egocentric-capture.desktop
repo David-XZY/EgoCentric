@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=EgoCentric 多模态采集
+Comment=四路 OAK 视频、双 IMU 与肌电原始数据采集
+Exec=egocentric-capture gui
+Icon=camera-video
+Terminal=false
+Categories=Science;
+StartupNotify=true

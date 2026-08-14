@@ -1,0 +1,1164 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>EgoCentric Data Cockpit</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --cyan: #52f4df;
+      --cyan-soft: rgba(82, 244, 223, 0.32);
+      --blue: #5ab6ff;
+      --lime: #b8f166;
+      --red: #ff5f69;
+      --amber: #ffd36a;
+      --ink: #061015;
+      --glass: rgba(7, 18, 23, 0.56);
+      --line: rgba(173, 231, 232, 0.24);
+      --text: #eefbfa;
+      --muted: rgba(222, 242, 241, 0.62);
+      font-family: Inter, "Noto Sans SC", "Microsoft YaHei", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: #02070a;
+    }
+
+    button {
+      font: inherit;
+    }
+
+    .cockpit {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      min-width: 320px;
+      min-height: 540px;
+      overflow: hidden;
+      background: #051014;
+      isolation: isolate;
+    }
+
+    .ambient-feed,
+    .video-shade,
+    .scanlines,
+    #trackingCanvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    .ambient-feed {
+      display: none;
+    }
+
+    .stage-frame {
+      position: absolute;
+      z-index: -1;
+      inset: 0;
+      overflow: hidden;
+      background: #061014;
+    }
+
+    .stage-frame::before,
+    .stage-frame::after {
+      display: none;
+    }
+
+    .video-feed {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      filter: saturate(0.9) contrast(1.06) brightness(0.76);
+    }
+
+    .video-shade {
+      z-index: -3;
+      background:
+        linear-gradient(180deg, rgba(1, 7, 10, 0.46), transparent 25%, transparent 70%, rgba(1, 8, 11, 0.62)),
+        linear-gradient(90deg, rgba(1, 9, 12, 0.46), transparent 18%, transparent 82%, rgba(1, 9, 12, 0.46));
+    }
+
+    .scanlines {
+      z-index: 9;
+      pointer-events: none;
+      opacity: 0.16;
+      background: repeating-linear-gradient(
+        180deg,
+        transparent 0,
+        transparent 3px,
+        rgba(131, 226, 220, 0.08) 4px
+      );
+      mix-blend-mode: screen;
+    }
+
+    #trackingCanvas {
+      z-index: 2;
+      pointer-events: none;
+    }
+
+    .top-rail,
+    .bottom-rail {
+      position: absolute;
+      left: 22px;
+      right: 22px;
+      z-index: 5;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      min-width: 0;
+      color: var(--text);
+    }
+
+    .top-rail {
+      top: 20px;
+      height: 58px;
+    }
+
+    .bottom-rail {
+      bottom: 17px;
+      height: 34px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      min-width: 0;
+      text-shadow: 0 1px 16px rgba(0, 0, 0, 0.7);
+    }
+
+    .brand-mark {
+      width: 34px;
+      height: 34px;
+      border: 1px solid rgba(82, 244, 223, 0.72);
+      background:
+        linear-gradient(90deg, transparent 46%, var(--cyan) 48%, var(--cyan) 52%, transparent 54%),
+        linear-gradient(transparent 46%, var(--cyan) 48%, var(--cyan) 52%, transparent 54%);
+      box-shadow: inset 0 0 18px rgba(82, 244, 223, 0.18), 0 0 18px rgba(82, 244, 223, 0.12);
+      transform: rotate(45deg);
+    }
+
+    .brand-title {
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: 0;
+      white-space: nowrap;
+    }
+
+    .brand-subtitle {
+      margin-top: 3px;
+      color: var(--muted);
+      font: 10px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
+      white-space: nowrap;
+    }
+
+    .session {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      min-width: 0;
+    }
+
+    .session-copy {
+      text-align: right;
+      text-shadow: 0 1px 16px rgba(0, 0, 0, 0.7);
+    }
+
+    .session-name {
+      font-size: 12px;
+      font-weight: 650;
+      white-space: nowrap;
+    }
+
+    .session-meta {
+      margin-top: 4px;
+      color: var(--muted);
+      font: 10px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
+      white-space: nowrap;
+    }
+
+    .record-button {
+      position: relative;
+      width: 48px;
+      height: 48px;
+      flex: 0 0 48px;
+      padding: 0;
+      border: 1px solid rgba(255, 112, 120, 0.62);
+      border-radius: 50%;
+      color: white;
+      background: rgba(68, 10, 14, 0.52);
+      cursor: pointer;
+      box-shadow: inset 0 0 20px rgba(255, 74, 86, 0.14), 0 0 20px rgba(255, 74, 86, 0.12);
+    }
+
+    .record-button::before {
+      content: "";
+      position: absolute;
+      inset: 13px;
+      border-radius: 50%;
+      background: var(--red);
+      box-shadow: 0 0 14px rgba(255, 95, 105, 0.58);
+      transition: border-radius 160ms ease, inset 160ms ease;
+    }
+
+    .record-button[aria-pressed="true"]::before {
+      inset: 15px;
+      border-radius: 4px;
+    }
+
+    .edge-frame {
+      position: absolute;
+      z-index: 4;
+      top: 92px;
+      right: 22px;
+      bottom: 59px;
+      left: 22px;
+      pointer-events: none;
+    }
+
+    .edge-frame::before,
+    .edge-frame::after {
+      content: "";
+      position: absolute;
+      left: -1px;
+      right: -1px;
+      height: 42px;
+      border-left: 2px solid rgba(98, 247, 231, 0.7);
+      border-right: 2px solid rgba(98, 247, 231, 0.7);
+    }
+
+    .edge-frame::before {
+      top: 0;
+      border-top: 2px solid rgba(98, 247, 231, 0.7);
+    }
+
+    .edge-frame::after {
+      bottom: 0;
+      border-bottom: 2px solid rgba(98, 247, 231, 0.7);
+    }
+
+    .telemetry {
+      position: absolute;
+      z-index: 5;
+      display: grid;
+      gap: 12px;
+      color: var(--text);
+      text-shadow: 0 1px 12px rgba(0, 0, 0, 0.86);
+    }
+
+    .telemetry-left {
+      top: 118px;
+      left: 37px;
+    }
+
+    .telemetry-right {
+      top: 116px;
+      right: 37px;
+      justify-items: end;
+    }
+
+    .metric {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 154px;
+      font: 10px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+
+    .telemetry-right .metric {
+      justify-content: flex-end;
+    }
+
+    .metric-label {
+      color: var(--muted);
+      text-transform: uppercase;
+    }
+
+    .metric-value {
+      color: var(--text);
+      font-weight: 700;
+    }
+
+    .metric-dot {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: var(--cyan);
+      box-shadow: 0 0 9px var(--cyan);
+    }
+
+    .metric-dot.amber {
+      background: var(--amber);
+      box-shadow: 0 0 9px var(--amber);
+    }
+
+    .object-lock {
+      position: absolute;
+      z-index: 5;
+      left: 50%;
+      top: 40%;
+      width: min(14vw, 210px);
+      height: min(19vh, 170px);
+      min-width: 122px;
+      min-height: 100px;
+      transform: translate(-50%, -50%);
+      border: 1px solid rgba(184, 241, 102, 0.78);
+      box-shadow: inset 0 0 22px rgba(184, 241, 102, 0.08), 0 0 20px rgba(184, 241, 102, 0.08);
+      pointer-events: none;
+    }
+
+    .object-lock::before,
+    .object-lock::after {
+      content: "";
+      position: absolute;
+      background: var(--lime);
+      box-shadow: 0 0 8px rgba(184, 241, 102, 0.7);
+    }
+
+    .object-lock::before {
+      top: 50%;
+      left: -12px;
+      width: 24px;
+      height: 1px;
+    }
+
+    .object-lock::after {
+      top: -12px;
+      left: 50%;
+      width: 1px;
+      height: 24px;
+    }
+
+    .object-label {
+      position: absolute;
+      top: -25px;
+      left: -1px;
+      display: flex;
+      gap: 9px;
+      align-items: center;
+      padding: 5px 8px;
+      color: #edfbd8;
+      background: rgba(18, 31, 10, 0.82);
+      border-left: 2px solid var(--lime);
+      font: 9px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+      white-space: nowrap;
+    }
+
+    .hand-tag {
+      position: absolute;
+      z-index: 5;
+      padding: 7px 10px;
+      color: var(--text);
+      background: rgba(3, 15, 18, 0.68);
+      border: 1px solid rgba(82, 244, 223, 0.3);
+      backdrop-filter: blur(9px);
+      font: 9px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+      pointer-events: none;
+    }
+
+    .hand-tag.left {
+      left: 26%;
+      bottom: 23%;
+      border-left: 2px solid var(--cyan);
+    }
+
+    .hand-tag.right {
+      right: 24%;
+      bottom: 24%;
+      border-right: 2px solid var(--blue);
+    }
+
+    .hand-corner {
+      position: absolute;
+      z-index: 5;
+      bottom: 68px;
+      width: min(23vw, 350px);
+      height: min(28vh, 270px);
+      min-height: 170px;
+      overflow: hidden;
+      background: radial-gradient(circle at 50% 60%, rgba(28, 89, 91, 0.24), transparent 62%);
+      backdrop-filter: blur(8px);
+      pointer-events: none;
+    }
+
+    .hand-corner.left {
+      left: 32px;
+    }
+
+    .hand-corner.right {
+      right: 32px;
+    }
+
+    .hand-corner canvas {
+      width: 100%;
+      height: 100%;
+    }
+
+    .model-label {
+      position: absolute;
+      top: 10px;
+      left: 14px;
+      z-index: 2;
+      color: var(--muted);
+      font: 9px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+
+    .emg-panel {
+      position: absolute;
+      z-index: 5;
+      top: 230px;
+      width: min(23vw, 350px);
+      height: min(22vh, 205px);
+      min-height: 142px;
+      backdrop-filter: blur(7px);
+      pointer-events: none;
+    }
+
+    .emg-panel.left {
+      left: 32px;
+      background: linear-gradient(90deg, rgba(5, 16, 21, 0.76), rgba(5, 16, 21, 0.12));
+      border-left: 1px solid rgba(82, 244, 223, 0.48);
+    }
+
+    .emg-panel.right {
+      right: 32px;
+      background: linear-gradient(270deg, rgba(5, 16, 21, 0.76), rgba(5, 16, 21, 0.12));
+      border-right: 1px solid rgba(90, 182, 255, 0.48);
+    }
+
+    .emg-panel.right .panel-heading {
+      right: 14px;
+      left: auto;
+      flex-direction: row-reverse;
+    }
+
+    .panel-heading {
+      position: absolute;
+      top: 11px;
+      left: 14px;
+      z-index: 2;
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      color: var(--text);
+      font: 10px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+
+    .panel-heading span {
+      color: var(--muted);
+    }
+
+    .emg-panel canvas {
+      width: 100%;
+      height: 100%;
+    }
+
+    .camera-stack {
+      position: absolute;
+      z-index: 5;
+      right: auto;
+      left: 50%;
+      bottom: 68px;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 7px;
+      width: min(29vw, 450px);
+      transform: translateX(-50%);
+      pointer-events: none;
+    }
+
+    .camera-view {
+      position: relative;
+      aspect-ratio: 16 / 9;
+      overflow: hidden;
+      background: #061014;
+      border: 1px solid rgba(164, 227, 226, 0.28);
+      box-shadow: 0 12px 28px rgba(0, 0, 0, 0.24);
+    }
+
+    .camera-view img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transform: scale(1.08);
+      filter: brightness(0.76) contrast(1.08);
+    }
+
+    .camera-view.mono img {
+      filter: grayscale(1) brightness(0.76) contrast(1.18);
+    }
+
+    .camera-view.depth img {
+      filter: grayscale(1) sepia(0.3) hue-rotate(155deg) saturate(2.2) brightness(0.66) contrast(1.35);
+    }
+
+    .camera-name {
+      position: absolute;
+      top: 7px;
+      left: 8px;
+      color: var(--text);
+      font: 8px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+      text-shadow: 0 1px 9px #000;
+    }
+
+    .camera-state {
+      position: absolute;
+      right: 7px;
+      bottom: 6px;
+      color: var(--cyan);
+      font: 7px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+
+    .event-strip {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      min-width: 0;
+      color: var(--muted);
+      font: 9px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+
+    .event {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      white-space: nowrap;
+    }
+
+    .event b {
+      color: var(--text);
+      font-weight: 650;
+    }
+
+    .timeline {
+      position: relative;
+      width: min(32vw, 520px);
+      height: 1px;
+      background: rgba(210, 242, 239, 0.28);
+    }
+
+    .timeline-progress {
+      position: absolute;
+      inset: -1px auto -1px 0;
+      width: 44%;
+      background: var(--cyan);
+      box-shadow: 0 0 9px rgba(82, 244, 223, 0.58);
+    }
+
+    .timeline-marker {
+      position: absolute;
+      top: -4px;
+      width: 8px;
+      height: 8px;
+      border: 1px solid var(--cyan);
+      background: #082126;
+      transform: rotate(45deg);
+    }
+
+    .timeline-marker.one {
+      left: 18%;
+    }
+
+    .timeline-marker.two {
+      left: 35%;
+      border-color: var(--blue);
+    }
+
+    .timeline-marker.three {
+      left: 61%;
+      border-color: var(--lime);
+    }
+
+    .record-time {
+      color: var(--text);
+      font: 12px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+      white-space: nowrap;
+    }
+
+    .record-state {
+      color: var(--red);
+      font: 9px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+      white-space: nowrap;
+    }
+
+    .record-state::before {
+      content: "";
+      display: inline-block;
+      width: 6px;
+      height: 6px;
+      margin-right: 7px;
+      border-radius: 50%;
+      background: var(--red);
+      box-shadow: 0 0 8px var(--red);
+      animation: pulse 1.2s ease-in-out infinite;
+    }
+
+    .cockpit.paused .record-state {
+      color: var(--muted);
+    }
+
+    .cockpit.paused .record-state::before {
+      background: var(--muted);
+      box-shadow: none;
+      animation: none;
+    }
+
+    @keyframes pulse {
+      50% {
+        opacity: 0.35;
+      }
+    }
+
+    @media (max-width: 900px) {
+      .top-rail {
+        left: 14px;
+        right: 14px;
+        top: 12px;
+      }
+
+      .brand-subtitle,
+      .session-meta,
+      .event:nth-child(n+3),
+      .timeline {
+        display: none;
+      }
+
+      .session {
+        gap: 10px;
+      }
+
+      .record-button {
+        width: 42px;
+        height: 42px;
+        flex-basis: 42px;
+      }
+
+      .stage-frame {
+        inset: 0;
+      }
+
+      .edge-frame {
+        top: 82px;
+        right: 14px;
+        bottom: 48px;
+        left: 14px;
+      }
+
+      .telemetry-left {
+        top: 93px;
+        left: 20px;
+      }
+
+      .telemetry-right {
+        top: 93px;
+        right: 20px;
+      }
+
+      .metric {
+        min-width: 0;
+        font-size: 8px;
+      }
+
+      .hand-corner {
+        bottom: 54px;
+        width: 28vw;
+        height: 22vh;
+        min-height: 148px;
+      }
+
+      .hand-corner.left,
+      .emg-panel.left {
+        left: 18px;
+      }
+
+      .hand-corner.right,
+      .emg-panel.right {
+        right: 18px;
+      }
+
+      .emg-panel {
+        top: 205px;
+        width: 29vw;
+        height: 17vh;
+      }
+
+      .camera-stack {
+        bottom: 57px;
+        width: 35vw;
+      }
+
+      .bottom-rail {
+        left: 18px;
+        right: 18px;
+        bottom: 10px;
+      }
+
+      .object-lock {
+        top: 42%;
+      }
+    }
+
+    @media (max-width: 560px) {
+      .stage-frame {
+        inset: 0;
+      }
+
+      .edge-frame {
+        top: 76px;
+        right: 10px;
+        bottom: 42px;
+        left: 10px;
+      }
+
+      .session-copy,
+      .telemetry-right {
+        display: none;
+      }
+
+      .brand-title {
+        font-size: 12px;
+      }
+
+      .telemetry-left .metric:nth-child(n+3) {
+        display: none;
+      }
+
+      .object-lock {
+        width: 28vw;
+        height: 15vh;
+      }
+
+      .emg-panel {
+        top: 168px;
+        width: 43vw;
+        height: 14vh;
+        min-height: 112px;
+      }
+
+      .camera-stack {
+        display: none;
+      }
+
+      .hand-corner {
+        bottom: 48px;
+        width: 42vw;
+        height: 25vh;
+        min-height: 160px;
+      }
+
+      .hand-tag {
+        font-size: 7px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="cockpit" id="cockpit">
+    <img class="ambient-feed" src="assets/egocentric-lab.png" alt="">
+    <div class="video-shade"></div>
+    <div class="stage-frame">
+      <img class="video-feed" src="assets/egocentric-lab.png" alt="">
+    </div>
+    <canvas id="trackingCanvas"></canvas>
+    <div class="scanlines"></div>
+
+    <header class="top-rail">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true"></div>
+        <div>
+          <div class="brand-title">EGOCENTRIC // DATA COCKPIT</div>
+          <div class="brand-subtitle">MULTIMODAL HUMAN MOTION ACQUISITION</div>
+        </div>
+      </div>
+      <div class="session">
+        <div class="session-copy">
+          <div class="session-name">P014 · GRASP / CUP / R03</div>
+          <div class="session-meta">2026-08-14 · OPERATOR 02 · RIGHT + LEFT</div>
+        </div>
+        <button class="record-button" id="recordButton" type="button" aria-label="切换录制状态" aria-pressed="true"></button>
+      </div>
+    </header>
+
+    <div class="edge-frame"></div>
+
+    <section class="telemetry telemetry-left" aria-label="采集状态">
+      <div class="metric"><i class="metric-dot"></i><span class="metric-label">OAK-4P</span><strong class="metric-value">ONLINE</strong></div>
+      <div class="metric"><i class="metric-dot"></i><span class="metric-label">WRIST BAND</span><strong class="metric-value">248 HZ</strong></div>
+      <div class="metric"><i class="metric-dot"></i><span class="metric-label">WRITE</span><strong class="metric-value" id="writeRate">86.4 MB/S</strong></div>
+      <div class="metric"><i class="metric-dot amber"></i><span class="metric-label">STORAGE</span><strong class="metric-value">428 GB</strong></div>
+    </section>
+
+    <section class="telemetry telemetry-right" aria-label="视觉状态">
+      <div class="metric"><span class="metric-label">FPS</span><strong class="metric-value" id="fpsValue">30.0</strong><i class="metric-dot"></i></div>
+      <div class="metric"><span class="metric-label">SYNC</span><strong class="metric-value" id="syncValue">+0.18 MS</strong><i class="metric-dot"></i></div>
+      <div class="metric"><span class="metric-label">HAND CONF</span><strong class="metric-value" id="confidenceValue">98.4%</strong><i class="metric-dot"></i></div>
+      <div class="metric"><span class="metric-label">GESTURE</span><strong class="metric-value">PRE-GRASP</strong><i class="metric-dot amber"></i></div>
+    </section>
+
+    <div class="object-lock">
+      <div class="object-label"><span>TARGET / MUG</span><strong>0.982</strong></div>
+    </div>
+
+    <section class="emg-panel left" aria-label="左手肌电信号">
+      <div class="panel-heading">LEFT EMG <span>4 CH · 248 HZ</span></div>
+      <canvas id="leftEmgCanvas"></canvas>
+    </section>
+
+    <section class="emg-panel right" aria-label="右手肌电信号">
+      <div class="panel-heading">RIGHT EMG <span>4 CH · 248 HZ</span></div>
+      <canvas id="rightEmgCanvas"></canvas>
+    </section>
+
+    <section class="hand-corner left" aria-label="左手骨架">
+      <span class="model-label">L_HAND / OPEN · 96.8%</span>
+      <canvas id="leftHandCanvas"></canvas>
+    </section>
+
+    <section class="hand-corner right" aria-label="右手骨架">
+      <span class="model-label">R_HAND / PRE-GRASP · 98.4%</span>
+      <canvas id="rightHandCanvas"></canvas>
+    </section>
+
+    <section class="camera-stack" aria-label="辅助相机">
+      <div class="camera-view">
+        <img src="assets/egocentric-lab.png" alt="">
+        <span class="camera-name">CAM B / RGB</span>
+        <span class="camera-state">30 FPS</span>
+      </div>
+      <div class="camera-view mono">
+        <img src="assets/egocentric-lab.png" alt="">
+        <span class="camera-name">CAM C / MONO</span>
+        <span class="camera-state">SYNC</span>
+      </div>
+      <div class="camera-view depth">
+        <img src="assets/egocentric-lab.png" alt="">
+        <span class="camera-name">CAM D / DEPTH</span>
+        <span class="camera-state">ACTIVE</span>
+      </div>
+    </section>
+
+    <footer class="bottom-rail">
+      <div class="event-strip">
+        <div class="event"><span>12:46.180</span><b>OPEN</b></div>
+        <div class="event"><span>12:47.032</span><b>PRE-GRASP</b></div>
+        <div class="event"><span>12:47.608</span><b>TARGET LOCK</b></div>
+        <div class="timeline" aria-hidden="true">
+          <i class="timeline-progress"></i>
+          <i class="timeline-marker one"></i>
+          <i class="timeline-marker two"></i>
+          <i class="timeline-marker three"></i>
+        </div>
+      </div>
+      <div class="event-strip">
+        <span class="record-time" id="recordTime">00:12:48.392</span>
+        <span class="record-state" id="recordState">REC / RAW + AI</span>
+      </div>
+    </footer>
+  </main>
+
+  <script>
+    const cockpit = document.querySelector("#cockpit");
+    const recordButton = document.querySelector("#recordButton");
+    const recordTime = document.querySelector("#recordTime");
+    const recordState = document.querySelector("#recordState");
+    const fpsValue = document.querySelector("#fpsValue");
+    const syncValue = document.querySelector("#syncValue");
+    const confidenceValue = document.querySelector("#confidenceValue");
+    const writeRate = document.querySelector("#writeRate");
+
+    let recording = true;
+    let elapsedMs = ((12 * 60 + 48) * 1000) + 392;
+    let lastClockTick = performance.now();
+
+    recordButton.addEventListener("click", () => {
+      recording = !recording;
+      recordButton.setAttribute("aria-pressed", String(recording));
+      cockpit.classList.toggle("paused", !recording);
+      recordState.textContent = recording ? "REC / RAW + AI" : "STANDBY";
+      lastClockTick = performance.now();
+    });
+
+    function formatTime(ms) {
+      const totalSeconds = Math.floor(ms / 1000);
+      const hours = Math.floor(totalSeconds / 3600);
+      const minutes = Math.floor((totalSeconds % 3600) / 60);
+      const seconds = totalSeconds % 60;
+      const millis = Math.floor(ms % 1000);
+      return [hours, minutes, seconds].map((value) => String(value).padStart(2, "0")).join(":")
+        + "." + String(millis).padStart(3, "0");
+    }
+
+    function resizeCanvas(canvas) {
+      const ratio = Math.min(window.devicePixelRatio || 1, 2);
+      const rect = canvas.getBoundingClientRect();
+      const width = Math.max(1, Math.round(rect.width * ratio));
+      const height = Math.max(1, Math.round(rect.height * ratio));
+      if (canvas.width !== width || canvas.height !== height) {
+        canvas.width = width;
+        canvas.height = height;
+      }
+      return { ctx: canvas.getContext("2d"), ratio, width, height };
+    }
+
+    const trackingCanvas = document.querySelector("#trackingCanvas");
+    const leftEmgCanvas = document.querySelector("#leftEmgCanvas");
+    const rightEmgCanvas = document.querySelector("#rightEmgCanvas");
+    const leftHandCanvas = document.querySelector("#leftHandCanvas");
+    const rightHandCanvas = document.querySelector("#rightHandCanvas");
+
+    const handLinks = [
+      [0, 1], [1, 2], [2, 3], [3, 4],
+      [0, 5], [5, 6], [6, 7], [7, 8],
+      [0, 9], [9, 10], [10, 11], [11, 12],
+      [0, 13], [13, 14], [14, 15], [15, 16],
+      [0, 17], [17, 18], [18, 19], [19, 20],
+      [5, 9], [9, 13], [13, 17]
+    ];
+
+    const leftHand = [
+      [0.385, 0.758], [0.365, 0.727], [0.350, 0.690], [0.343, 0.648], [0.345, 0.611],
+      [0.383, 0.691], [0.380, 0.645], [0.379, 0.603], [0.382, 0.568],
+      [0.398, 0.688], [0.405, 0.640], [0.414, 0.598], [0.425, 0.565],
+      [0.413, 0.698], [0.435, 0.661], [0.453, 0.631], [0.470, 0.609],
+      [0.426, 0.716], [0.450, 0.697], [0.472, 0.682], [0.493, 0.674]
+    ];
+
+    const rightHand = [
+      [0.616, 0.758], [0.636, 0.727], [0.650, 0.690], [0.657, 0.648], [0.655, 0.611],
+      [0.617, 0.691], [0.620, 0.645], [0.621, 0.603], [0.618, 0.568],
+      [0.602, 0.688], [0.595, 0.640], [0.586, 0.598], [0.575, 0.565],
+      [0.587, 0.698], [0.565, 0.661], [0.547, 0.631], [0.530, 0.609],
+      [0.574, 0.716], [0.550, 0.697], [0.528, 0.682], [0.507, 0.674]
+    ];
+
+    function drawHandSkeleton(ctx, points, width, height, color, phase) {
+      const wobble = (index) => Math.sin(phase * 1.4 + index * 0.72) * 1.5;
+      ctx.save();
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 10;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = Math.max(1.5, width / 900);
+
+      handLinks.forEach(([from, to]) => {
+        ctx.beginPath();
+        ctx.moveTo(points[from][0] * width, points[from][1] * height + wobble(from));
+        ctx.lineTo(points[to][0] * width, points[to][1] * height + wobble(to));
+        ctx.stroke();
+      });
+
+      points.forEach(([x, y], index) => {
+        const radius = index === 0 ? 5 : index % 4 === 0 ? 4 : 3;
+        ctx.beginPath();
+        ctx.fillStyle = "rgba(3, 17, 21, 0.92)";
+        ctx.arc(x * width, y * height + wobble(index), radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      });
+      ctx.restore();
+    }
+
+    function drawTrajectory(ctx, width, height, phase) {
+      const paths = [
+        { start: [0.18, 0.76], control: [0.37, 0.62], end: [0.485, 0.46], color: "#52f4df" },
+        { start: [0.82, 0.76], control: [0.63, 0.62], end: [0.515, 0.46], color: "#5ab6ff" }
+      ];
+
+      paths.forEach((path, pathIndex) => {
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(path.start[0] * width, path.start[1] * height);
+        ctx.quadraticCurveTo(
+          path.control[0] * width,
+          path.control[1] * height,
+          path.end[0] * width,
+          path.end[1] * height
+        );
+        ctx.strokeStyle = path.color;
+        ctx.lineWidth = 1.3;
+        ctx.setLineDash([4, 9]);
+        ctx.lineDashOffset = -phase * 20 - pathIndex * 9;
+        ctx.shadowColor = path.color;
+        ctx.shadowBlur = 8;
+        ctx.stroke();
+        ctx.restore();
+      });
+
+      const orbit = phase * 0.8;
+      for (let index = 0; index < 2; index += 1) {
+        const x = width * (0.5 + Math.cos(orbit + index * Math.PI) * 0.026);
+        const y = height * (0.45 + Math.sin(orbit + index * Math.PI) * 0.018);
+        ctx.beginPath();
+        ctx.fillStyle = index ? "#5ab6ff" : "#52f4df";
+        ctx.shadowColor = ctx.fillStyle;
+        ctx.shadowBlur = 14;
+        ctx.arc(x, y, 3.4, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.shadowBlur = 0;
+    }
+
+    function drawTracking(time) {
+      const { ctx, width, height } = resizeCanvas(trackingCanvas);
+      ctx.clearRect(0, 0, width, height);
+      const phase = time / 1000;
+      drawTrajectory(ctx, width, height, phase);
+    }
+
+    function drawEmg(canvas, time, side) {
+      const { ctx, width, height } = resizeCanvas(canvas);
+      ctx.clearRect(0, 0, width, height);
+      const phase = time / 250 + (side === "right" ? 1.7 : 0);
+      const top = height * 0.25;
+      const bottom = height * 0.91;
+      const channelGap = (bottom - top) / 4;
+      const channelColors = side === "left"
+        ? ["#52f4df", "#5ab6ff", "#b8f166", "#ffd36a"]
+        : ["#5ab6ff", "#c69cff", "#ff7f68", "#d8f4f1"];
+
+      ctx.strokeStyle = "rgba(157, 222, 218, 0.08)";
+      ctx.lineWidth = 1;
+      for (let index = 0; index <= 4; index += 1) {
+        const y = top + channelGap * index;
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(width, y);
+        ctx.stroke();
+      }
+
+      channelColors.forEach((color, channel) => {
+        const base = top + channelGap * (channel + 0.5);
+        ctx.beginPath();
+        for (let x = 0; x <= width; x += 3) {
+          const normalized = x / width;
+          const burst = Math.exp(-Math.pow((normalized - 0.72) / 0.13, 2)) * 2.7 + 0.7;
+          const signal =
+            Math.sin(normalized * 92 + phase + channel * 0.8) * 0.25 +
+            Math.sin(normalized * 226 + phase * 1.8 + channel) * 0.12 +
+            Math.sin(normalized * 41 + channel * 2.1) * 0.18;
+          const sideGain = side === "right" ? 1.08 : 0.94;
+          const y = base + signal * channelGap * burst * sideGain;
+          if (x === 0) {
+            ctx.moveTo(x, y);
+          } else {
+            ctx.lineTo(x, y);
+          }
+        }
+        ctx.strokeStyle = color;
+        ctx.globalAlpha = channel < 2 ? 0.95 : 0.72;
+        ctx.lineWidth = channel < 2 ? 1.45 : 1;
+        ctx.shadowColor = color;
+        ctx.shadowBlur = channel < 2 ? 6 : 2;
+        ctx.stroke();
+      });
+      ctx.globalAlpha = 1;
+      ctx.shadowBlur = 0;
+    }
+
+    const modelLinks = [
+      [0, 1], [1, 2], [2, 3], [3, 4],
+      [0, 5], [5, 6], [6, 7], [7, 8],
+      [0, 9], [9, 10], [10, 11], [11, 12],
+      [0, 13], [13, 14], [14, 15], [15, 16],
+      [0, 17], [17, 18], [18, 19], [19, 20],
+      [5, 9], [9, 13], [13, 17], [17, 0]
+    ];
+
+    const modelPoints = [
+      [0, 0.55, 0], [-0.34, 0.42, 0.05], [-0.55, 0.24, 0.05], [-0.68, 0.04, 0.02], [-0.74, -0.15, -0.03],
+      [-0.28, 0.18, 0.02], [-0.33, -0.1, 0.04], [-0.34, -0.36, 0.02], [-0.34, -0.59, -0.03],
+      [-0.08, 0.14, 0.03], [-0.08, -0.18, 0.04], [-0.08, -0.47, 0], [-0.08, -0.73, -0.05],
+      [0.12, 0.18, 0.02], [0.18, -0.12, 0.02], [0.21, -0.39, -0.03], [0.23, -0.62, -0.08],
+      [0.3, 0.28, 0], [0.42, 0.02, -0.02], [0.49, -0.21, -0.06], [0.54, -0.4, -0.1]
+    ];
+
+    function drawHandModel(canvas, time, mirrored) {
+      const { ctx, width, height } = resizeCanvas(canvas);
+      ctx.clearRect(0, 0, width, height);
+      const angle = Math.sin(time / 1700) * 0.22 + (mirrored ? -0.18 : 0.18);
+      const cos = Math.cos(angle);
+      const sin = Math.sin(angle);
+      const projected = modelPoints.map(([x, y, z]) => {
+        const sourceX = mirrored ? -x : x;
+        const rotatedX = sourceX * cos - z * sin;
+        const rotatedZ = sourceX * sin + z * cos;
+        const scale = Math.min(width, height) * (0.42 + rotatedZ * 0.035);
+        return [
+          width * 0.5 + rotatedX * scale,
+          height * 0.53 + y * scale,
+          rotatedZ
+        ];
+      });
+
+      ctx.save();
+      ctx.lineCap = "round";
+      modelLinks.forEach(([from, to]) => {
+        const depth = (projected[from][2] + projected[to][2]) * 0.5;
+        ctx.beginPath();
+        ctx.moveTo(projected[from][0], projected[from][1]);
+        ctx.lineTo(projected[to][0], projected[to][1]);
+        ctx.strokeStyle = depth > 0 ? "rgba(82,244,223,0.95)" : "rgba(90,182,255,0.58)";
+        ctx.lineWidth = Math.max(1.2, Math.min(width, height) / 115);
+        ctx.shadowColor = "#52f4df";
+        ctx.shadowBlur = depth > 0 ? 9 : 3;
+        ctx.stroke();
+      });
+
+      projected.forEach(([x, y, z]) => {
+        const radius = Math.max(2, Math.min(width, height) / 70) * (1 + z * 0.15);
+        ctx.beginPath();
+        ctx.fillStyle = z > 0 ? "#d6fffa" : "#59b8c7";
+        ctx.arc(x, y, radius, 0, Math.PI * 2);
+        ctx.fill();
+      });
+      ctx.restore();
+    }
+
+    function updateTelemetry(time) {
+      fpsValue.textContent = (29.94 + Math.sin(time / 1100) * 0.05).toFixed(2);
+      syncValue.textContent = `${Math.sin(time / 850) > 0 ? "+" : ""}${(Math.sin(time / 850) * 0.21).toFixed(2)} MS`;
+      confidenceValue.textContent = `${(98.2 + Math.sin(time / 700) * 0.55).toFixed(1)}%`;
+      writeRate.textContent = `${(85.9 + Math.sin(time / 1300) * 1.7).toFixed(1)} MB/S`;
+    }
+
+    function animate(time) {
+      if (recording) {
+        const delta = time - lastClockTick;
+        elapsedMs += Math.max(0, Math.min(delta, 100));
+      }
+      lastClockTick = time;
+      recordTime.textContent = formatTime(elapsedMs);
+      drawTracking(time);
+      drawEmg(leftEmgCanvas, time, "left");
+      drawEmg(rightEmgCanvas, time, "right");
+      drawHandModel(leftHandCanvas, time, false);
+      drawHandModel(rightHandCanvas, time + 420, true);
+      updateTelemetry(time);
+      requestAnimationFrame(animate);
+    }
+
+    window.addEventListener("resize", () => {
+      drawTracking(performance.now());
+      drawEmg(leftEmgCanvas, performance.now(), "left");
+      drawEmg(rightEmgCanvas, performance.now(), "right");
+    });
+
+    requestAnimationFrame(animate);
+  </script>
+</body>
+</html>

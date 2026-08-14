@@ -1,0 +1,85 @@
+syntax = "proto3";
+
+package egocentric.capture.v1;
+
+message ClockReference {
+  uint64 normalized_unix_ns = 1;
+  uint64 host_monotonic_ns = 2;
+  optional uint64 source_device_ns = 3;
+  optional uint64 source_host_ns = 4;
+  optional uint64 arrival_monotonic_ns = 5;
+  uint64 uncertainty_ns = 6;
+  string quality = 7;
+}
+
+message CameraTiming {
+  ClockReference stamp = 1;
+  string camera = 2;
+  string socket = 3;
+  uint64 sequence = 4;
+  string frame_type = 5;
+  uint32 width = 6;
+  uint32 height = 7;
+  string codec = 8;
+  uint64 payload_bytes = 9;
+  bool keyframe = 10;
+}
+
+message OakImuSample {
+  ClockReference stamp = 1;
+  repeated double accel_m_s2 = 2;
+  repeated double gyro_rad_s = 3;
+  repeated double magnetic_ut = 4;
+  repeated double quaternion_xyzw = 5;
+  map<string, uint64> sensor_device_timestamps_ns = 6;
+  map<string, uint64> sensor_host_timestamps_ns = 7;
+  optional double orientation_accuracy = 8;
+}
+
+message WearableRawChunk {
+  bytes data = 1;
+  uint64 read_start_monotonic_ns = 2;
+  uint64 read_end_monotonic_ns = 3;
+  uint64 normalized_unix_ns = 4;
+}
+
+message WearableEmgSample {
+  ClockReference stamp = 1;
+  uint32 sequence = 2;
+  repeated sint32 channels_uv = 3;
+}
+
+message WearableImuSample {
+  ClockReference stamp = 1;
+  uint32 sequence = 2;
+  repeated sint32 gyro_raw = 3;
+  repeated sint32 accel_raw = 4;
+  repeated double gyro_rad_s = 5;
+  repeated double accel_m_s2 = 6;
+}
+
+message ClockSync {
+  uint64 host_monotonic_ns = 1;
+  uint64 unix_ns = 2;
+  uint64 uncertainty_ns = 3;
+  double offset_jitter_ns = 4;
+}
+
+message HealthSample {
+  ClockReference stamp = 1;
+  map<string, double> rates_hz = 2;
+  map<string, double> last_seen_age_s = 3;
+  map<string, uint64> sequence_gaps = 4;
+  uint64 queue_depth = 5;
+  uint64 queue_drops = 6;
+  uint64 disk_free_bytes = 7;
+  bool ready = 8;
+}
+
+message SystemEvent {
+  ClockReference stamp = 1;
+  string level = 2;
+  string code = 3;
+  string message = 4;
+  map<string, string> details = 5;
+}

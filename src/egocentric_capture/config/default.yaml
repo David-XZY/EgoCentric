@@ -1,0 +1,107 @@
+workspace:
+  output_root: ~/EgoCentricData
+  minimum_start_free_gib: 20
+  emergency_stop_free_gib: 2
+
+session:
+  bypass_device_checks: false
+  arm_timeout_s: 3
+  healthy_before_ready_s: 2
+  stale_timeout_s: 1
+  segment_duration_s: 60
+  segment_size_gib: 1
+  writer_queue_size: 20000
+  mcap_chunk_size_mib: 8
+  fsync_interval_s: 2
+
+oak:
+  expected_name: OAK-4P-New
+  mxid: null
+  cameras:
+    - socket: CAM_A
+      name: cam_a
+    - socket: CAM_B
+      name: cam_b
+    - socket: CAM_C
+      name: cam_c
+    - socket: CAM_D
+      name: cam_d
+  width: 1920
+  height: 1080
+  sensor_fps: 30
+  minimum_fps: 23.5
+  codec: H264_MAIN
+  bitrate_kbps: 12000
+  video_host_queue_frames: 90
+  imu_host_queue_samples: 400
+  # 已弃用，仅保留旧配置兼容；实时显示节流由 preview.display_fps 控制。
+  preview_fps: 12
+  keyframe_frequency: 30
+  num_b_frames: 0
+  hardware_sync:
+    enabled: true
+    pulse_width_s: 0.001
+    script_overhead_s: 0.009
+  diagnostics_enabled: false
+  imu:
+    frequency_hz: 100
+    minimum_hz: 80
+    sensors:
+      - ACCELEROMETER_CALIBRATED
+      - GYROSCOPE_CALIBRATED
+      - MAGNETOMETER_CALIBRATED
+      - ROTATION_VECTOR
+
+wearable:
+  port: auto
+  vid: 0x10c4
+  pid: 0xea60
+  serial_number: null
+  baudrate: 921600
+  imu_warmup_s: 5
+  emg_expected_hz: 250
+  emg_minimum_hz: 225
+  imu_minimum_baseline_ratio: 0.8
+  read_timeout_s: 0.05
+  preview_seconds: 5
+  # 原始数据仍按完整采样率接收和录制；以下参数只控制屏幕曲线负载。
+  plot_interval_ms: 100
+  plot_downsample: 4
+  plot_scale_interval_s: 0.5
+  diagnostics_enabled: false
+
+preview:
+  backend: gstreamer
+  decoder: software
+  latest_frame_only: true
+  input_queue_frames: 8
+  appsrc_queue_frames: 8
+  # 仅保留配置兼容；最新帧模式不再在四路 sink 上分别节流。
+  display_fps: 0
+  # 只用于预览告警，不参与设备就绪、录制中断或最终时间对准判定。
+  max_latency_ms: 250
+  software_decoder_threads: 2
+  failure_policy: warn_continue
+  monitoring_enabled: true
+  monitor_interval_s: 1
+  # 与板载四路编码流的实测稳定输出一致，避免 30 Hz 合成重复刷新和相位跳帧。
+  fixed_fps: 25
+  mosaic_width: 1280
+  mosaic_height: 720
+  mixer_latency_ms: 0
+  preview_jitter_ms: 80
+  decoded_queue_frames: 4
+  diagnostics_enabled: false
+
+quality:
+  camera_sync_p95_ms: 0.5
+  camera_sync_max_ms: 5
+  require_zero_sequence_gaps: true
+  require_zero_queue_drops: true
+
+simulation:
+  seed: 20260806
+  camera_fps: 30
+  oak_imu_hz: 90
+  emg_hz: 250
+  wearable_imu_hz: 50

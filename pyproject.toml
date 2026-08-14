@@ -1,0 +1,63 @@
+[build-system]
+requires = ["setuptools>=83", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "egocentric-capture"
+version = "0.1.0"
+description = "OAK 四目、肌电和双 IMU 的统一原始数据采集应用"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "av>=14",
+  "depthai==3.7.1",
+  "foxglove-schemas-protobuf==0.4.0",
+  "mcap==1.4.0",
+  "mcap-protobuf-support==0.5.4",
+  "numpy>=1.26",
+  "opencv-contrib-python>=4.10",
+  "protobuf>=7.35,<8",
+  "pyarrow>=18,<24",
+  "PyGObject>=3.52,<4",
+  "PySide6==6.10.2",
+  "pyqtgraph>=0.14",
+  "pyserial>=3.5",
+  "PyYAML>=6",
+]
+
+[project.optional-dependencies]
+dev = [
+  "grpcio-tools>=1.83",
+  "pyinstaller>=6.21",
+  "pytest>=9",
+  "pytest-qt>=4.5",
+]
+export = []
+
+[project.scripts]
+egocentric-capture = "egocentric_capture.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+egocentric_capture = [
+  "config/*.yaml",
+  "schemas/*.proto",
+  "assets/*",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+qt_api = "pyside6"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]
+
+[tool.ruff.lint.per-file-ignores]
+"src/egocentric_capture/schemas/*_pb2.py" = ["I001"]
