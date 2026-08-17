@@ -108,6 +108,12 @@ def test_cockpit_layout_uses_main_camera_and_three_centered_thumbnails() -> None
     assert [item["z"] for item in thumbnails] == [1, 2, 3]
     assert thumbnails[0]["x"] < thumbnails[1]["x"] < thumbnails[2]["x"]
 
+    switched = cockpit_layout(1280, 720, "cam_c")
+    assert switched["cam_c"]["alpha"] == 1.0
+    assert switched["cam_c"]["width"] == 1280
+    assert switched["cam_a"]["alpha"] == AUXILIARY_CAMERA_ALPHA
+    assert switched["cam_a"]["width"] < 1280
+
 
 def test_preview_waits_for_each_camera_keyframe_before_queueing() -> None:
     backend = object.__new__(_GstreamerBackend)

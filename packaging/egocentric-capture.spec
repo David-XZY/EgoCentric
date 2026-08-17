@@ -27,7 +27,7 @@ datas = [
         "egocentric_capture/assets",
     ),
     (
-        str(source / "egocentric_capture" / "assets" / "huazhi_logo.png"),
+        str(source / "egocentric_capture" / "assets" / "huazhi_logo.webp"),
         "egocentric_capture/assets",
     ),
     (

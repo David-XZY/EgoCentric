@@ -85,4 +85,16 @@ def test_cockpit_qml_loads_and_contains_video_surface(qtbot) -> None:
     assert root.findChild(QQuickItem, "mosaicVideo") is not None
     assert root.findChild(QQuickItem, "huazhiLogo") is not None
     assert root.property("primaryCamera") == "cam_a"
+    requested = []
+    root.primaryCameraRequested.connect(requested.append)
+    root.selectPrimaryCamera("cam_b")
+    assert requested == ["cam_b"]
+    assert root.property("primaryCamera") == "cam_a"
+
+    qml_source = qml_path.read_text(encoding="utf-8")
+    assert 'source: "huazhi_logo.webp"' in qml_source
+    assert "trajectoryCanvas" not in qml_source
+    assert "setLineDash" not in qml_source
+    assert "sourceSpan" not in qml_source
+    assert "const palmLength" in qml_source
     view.setSource(QUrl())

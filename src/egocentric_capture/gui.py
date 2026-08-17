@@ -248,10 +248,19 @@ class CaptureWindow(QMainWindow):
             self.engine.request_stop()
 
     def _set_primary_camera(self, camera: str) -> None:
-        normalized = str(camera)
+        normalized = str(camera).strip().lower()
+        if normalized not in {"cam_a", "cam_b", "cam_c", "cam_d"}:
+            return
         if self.preview_controller is None:
             return
         self.preview_controller.set_cockpit_layout(normalized)
+        QTimer.singleShot(
+            0,
+            lambda: self._qml_root.setProperty(
+                "primaryCamera",
+                normalized,
+            ),
+        )
         self.bridge.show_toast(
             normalized.upper().replace("_", " ") + " 已设为主视角"
         )
