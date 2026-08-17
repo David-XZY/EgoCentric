@@ -145,11 +145,20 @@ Rectangle {
                 ? Math.max(2, root.height / 450)
                 : Math.max(1, viewport.height / 78)
             const mapped = []
+            let minX = viewport.x + points[0].x * viewport.width
+            let maxX = minX
+            let minY = viewport.y + points[0].y * viewport.height
+            let maxY = minY
             for (let index = 0; index < points.length; index += 1) {
-                mapped.push({
+                const point = {
                     x: viewport.x + points[index].x * viewport.width,
                     y: viewport.y + points[index].y * viewport.height
-                })
+                }
+                mapped.push(point)
+                minX = Math.min(minX, point.x)
+                maxX = Math.max(maxX, point.x)
+                minY = Math.min(minY, point.y)
+                maxY = Math.max(maxY, point.y)
             }
 
             context.save()
@@ -185,6 +194,105 @@ Rectangle {
                     Math.PI * 2
                 )
                 context.fill()
+            }
+
+            const padding = viewport.main
+                ? Math.max(12, Math.min(viewport.width, viewport.height) * 0.018)
+                : Math.max(2, viewport.height * 0.035)
+            const boxX = Math.max(viewport.x + 2, minX - padding)
+            const boxY = Math.max(viewport.y + 2, minY - padding)
+            const boxRight = Math.min(
+                viewport.x + viewport.width - 2,
+                maxX + padding
+            )
+            const boxBottom = Math.min(
+                viewport.y + viewport.height - 2,
+                maxY + padding
+            )
+            const boxWidth = Math.max(1, boxRight - boxX)
+            const boxHeight = Math.max(1, boxBottom - boxY)
+            context.globalAlpha = alpha * 0.42
+            context.strokeStyle = lineColor
+            context.lineWidth = viewport.main ? 1 : 0.75
+            context.strokeRect(boxX, boxY, boxWidth, boxHeight)
+
+            const cornerLength = Math.min(
+                viewport.main ? 20 : 6,
+                boxWidth * 0.2,
+                boxHeight * 0.2
+            )
+            context.globalAlpha = alpha
+            context.lineWidth = viewport.main ? 1.6 : 1
+            const corners = [
+                [boxX, boxY, boxX + cornerLength, boxY],
+                [boxX, boxY, boxX, boxY + cornerLength],
+                [boxRight, boxY, boxRight - cornerLength, boxY],
+                [boxRight, boxY, boxRight, boxY + cornerLength],
+                [boxX, boxBottom, boxX + cornerLength, boxBottom],
+                [boxX, boxBottom, boxX, boxBottom - cornerLength],
+                [boxRight, boxBottom, boxRight - cornerLength, boxBottom],
+                [boxRight, boxBottom, boxRight, boxBottom - cornerLength]
+            ]
+            for (let index = 0; index < corners.length; index += 1) {
+                const corner = corners[index]
+                context.beginPath()
+                context.moveTo(corner[0], corner[1])
+                context.lineTo(corner[2], corner[3])
+                context.stroke()
+            }
+
+            if (viewport.main) {
+                const confidence = Number(handData.confidence || 0)
+                const handedness = String(handData.handedness || "HAND")
+                const label = handedness + " HAND  ·  "
+                    + (confidence * 100).toFixed(1) + "%"
+                const fontSize = Math.max(9, root.monoSize)
+                context.font = "600 " + fontSize + "px monospace"
+                const labelWidth = context.measureText(label).width + 14
+                const labelHeight = fontSize + 8
+                let labelX = handedness === "RIGHT"
+                    ? boxRight - labelWidth : boxX
+                labelX = Math.max(
+                    viewport.x + 2,
+                    Math.min(
+                        labelX,
+                        viewport.x + viewport.width - labelWidth - 2
+                    )
+                )
+                const hudSafeTop = 108
+                    + Math.min(132, root.height * 0.145) + 8
+                let labelY = Math.max(
+                    boxY - labelHeight,
+                    hudSafeTop
+                )
+                labelY = Math.min(
+                    labelY,
+                    viewport.y + viewport.height - labelHeight - 2
+                )
+                context.globalAlpha = alpha * 0.9
+                context.fillStyle = "#d902080b"
+                context.fillRect(
+                    labelX,
+                    labelY,
+                    labelWidth,
+                    labelHeight
+                )
+                context.globalAlpha = alpha
+                context.strokeStyle = lineColor
+                context.lineWidth = 1
+                context.strokeRect(
+                    labelX,
+                    labelY,
+                    labelWidth,
+                    labelHeight
+                )
+                context.fillStyle = "#f0fffd"
+                context.textBaseline = "middle"
+                context.fillText(
+                    label,
+                    labelX + 7,
+                    labelY + labelHeight / 2
+                )
             }
             context.restore()
         }
@@ -687,6 +795,7 @@ Rectangle {
 
     component EmgPanel: Item {
         id: emgPanel
+        objectName: "emgPanel_" + (rightAligned ? "RIGHT" : "LEFT")
         property string title: ""
         property var channels: []
         property bool rightAligned: false
@@ -699,8 +808,23 @@ Rectangle {
 
         Rectangle {
             anchors.fill: parent
-            color: "#a4071217"
-            opacity: 0.76
+            gradient: Gradient {
+                orientation: Gradient.Horizontal
+                GradientStop {
+                    position: 0
+                    color: emgPanel.rightAligned
+                        ? "#08071217" : "#b4071217"
+                }
+                GradientStop {
+                    position: 0.62
+                    color: "#50071217"
+                }
+                GradientStop {
+                    position: 1
+                    color: emgPanel.rightAligned
+                        ? "#b4071217" : "#08071217"
+                }
+            }
         }
 
         Rectangle {
@@ -714,9 +838,11 @@ Rectangle {
 
         Row {
             anchors.top: parent.top
-            anchors.topMargin: 11
-            anchors.left: parent.left
-            anchors.leftMargin: 14
+            anchors.topMargin: 8
+            anchors.left: emgPanel.rightAligned ? undefined : parent.left
+            anchors.leftMargin: emgPanel.rightAligned ? 0 : 14
+            anchors.right: emgPanel.rightAligned ? parent.right : undefined
+            anchors.rightMargin: emgPanel.rightAligned ? 14 : 0
             spacing: 9
 
             Text {
@@ -735,8 +861,11 @@ Rectangle {
 
         Canvas {
             id: emgCanvas
+            objectName: "emgCanvas_"
+                + (emgPanel.rightAligned ? "RIGHT" : "LEFT")
             anchors.fill: parent
-            anchors.topMargin: 28
+            anchors.topMargin: 25
+            anchors.bottomMargin: 4
 
             onPaint: {
                 const context = getContext("2d")
@@ -744,8 +873,21 @@ Rectangle {
                 const count = 4
                 const gap = height / count
                 context.lineWidth = 1
+                const gridGradient = context.createLinearGradient(
+                    0,
+                    0,
+                    width,
+                    0
+                )
+                if (emgPanel.rightAligned) {
+                    gridGradient.addColorStop(0, "#089dcdca")
+                    gridGradient.addColorStop(1, "#429dcdca")
+                } else {
+                    gridGradient.addColorStop(0, "#429dcdca")
+                    gridGradient.addColorStop(1, "#089dcdca")
+                }
                 for (let row = 0; row <= count; row += 1) {
-                    context.strokeStyle = "#1f9dcdca"
+                    context.strokeStyle = gridGradient
                     context.beginPath()
                     context.moveTo(0, row * gap)
                     context.lineTo(width, row * gap)
@@ -756,13 +898,44 @@ Rectangle {
                         ? emgPanel.channels[channel] : []
                     if (values.length < 2)
                         continue
-                    context.strokeStyle = emgPanel.colors[channel]
+                    const color = emgPanel.colors[channel]
+                    const traceGradient = context.createLinearGradient(
+                        0,
+                        0,
+                        width,
+                        0
+                    )
+                    if (emgPanel.rightAligned) {
+                        traceGradient.addColorStop(
+                            0,
+                            Qt.rgba(color.r, color.g, color.b, 0.06)
+                        )
+                        traceGradient.addColorStop(
+                            0.58,
+                            Qt.rgba(color.r, color.g, color.b, 0.42)
+                        )
+                        traceGradient.addColorStop(1, color)
+                    } else {
+                        traceGradient.addColorStop(0, color)
+                        traceGradient.addColorStop(
+                            0.42,
+                            Qt.rgba(color.r, color.g, color.b, 0.42)
+                        )
+                        traceGradient.addColorStop(
+                            1,
+                            Qt.rgba(color.r, color.g, color.b, 0.06)
+                        )
+                    }
+                    context.strokeStyle = traceGradient
                     context.lineWidth = channel < 2 ? 1.45 : 1.05
                     context.beginPath()
                     for (let index = 0; index < values.length; index += 1) {
                         const x = index * width / (values.length - 1)
+                        const valueIndex = emgPanel.rightAligned
+                            ? index : values.length - 1 - index
                         const base = (channel + 0.5) * gap
-                        const y = base - values[index] * gap * 0.42
+                        const y = base
+                            - values[valueIndex] * gap * 0.42
                         if (index === 0)
                             context.moveTo(x, y)
                         else
@@ -784,8 +957,8 @@ Rectangle {
     EmgPanel {
         x: 32
         y: 108
-        width: Math.min(350, root.width * 0.23)
-        height: Math.min(190, root.height * 0.21)
+        width: Math.min(560, root.width * 0.35)
+        height: Math.min(132, root.height * 0.145)
         title: "左臂肌电 / EMG 01–04"
         channels: uiBridge.leftEmg
     }
@@ -794,182 +967,12 @@ Rectangle {
         anchors.right: parent.right
         anchors.rightMargin: 32
         y: 108
-        width: Math.min(350, root.width * 0.23)
-        height: Math.min(190, root.height * 0.21)
+        width: Math.min(560, root.width * 0.35)
+        height: Math.min(132, root.height * 0.145)
         title: "右臂肌电 / EMG 05–08"
         rightAligned: true
         channels: uiBridge.rightEmg
         colors: [root.blue, "#c69cff", "#ff7f68", "#d8f4f1"]
-    }
-
-    component HandPanel: Item {
-        id: handPanel
-        objectName: "handPanel_" + fallbackLabel
-        property var handData: ({})
-        property color lineColor: root.cyan
-        property string fallbackLabel: ""
-
-        Rectangle {
-            anchors.fill: parent
-            color: "#19040d11"
-            border.color: Qt.rgba(
-                handPanel.lineColor.r,
-                handPanel.lineColor.g,
-                handPanel.lineColor.b,
-                0.24
-            )
-            border.width: 1
-        }
-
-        Rectangle {
-            x: 0
-            y: 0
-            width: 42
-            height: 2
-            color: handPanel.lineColor
-            opacity: 0.72
-        }
-
-        Rectangle {
-            x: 0
-            y: 0
-            width: 2
-            height: 26
-            color: handPanel.lineColor
-            opacity: 0.72
-        }
-
-        Text {
-            x: 14
-            y: 10
-            text: handPanel.handData.gesture
-                ? handPanel.handData.handedness + "_HAND / "
-                    + handPanel.handData.gesture + " · "
-                    + (handPanel.handData.confidence * 100).toFixed(1) + "%"
-                : handPanel.fallbackLabel + " / NO HAND"
-            color: root.mutedColor
-            font.family: "monospace"
-            font.pixelSize: root.monoSize
-        }
-
-        Canvas {
-            id: handCanvas
-            objectName: "handCanvas_" + handPanel.fallbackLabel
-            anchors.fill: parent
-            anchors.topMargin: 24
-
-            onPaint: {
-                const context = getContext("2d")
-                context.clearRect(0, 0, width, height)
-                const points = handPanel.handData.landmarks || []
-                if (points.length < 21)
-                    return
-
-                const sourceAspect = 16 / 9
-                const sourcePoints = []
-                let minX = points[0].x * sourceAspect
-                let maxX = minX
-                let minY = points[0].y
-                let maxY = minY
-                for (let index = 0; index < points.length; index += 1) {
-                    const sourcePoint = {
-                        x: points[index].x * sourceAspect,
-                        y: points[index].y
-                    }
-                    sourcePoints.push(sourcePoint)
-                    minX = Math.min(minX, sourcePoint.x)
-                    maxX = Math.max(maxX, sourcePoint.x)
-                    minY = Math.min(minY, sourcePoint.y)
-                    maxY = Math.max(maxY, sourcePoint.y)
-                }
-                const sourceCenterX = (minX + maxX) / 2
-                const sourceCenterY = (minY + maxY) / 2
-                const spanX = Math.max(0.001, maxX - minX)
-                const spanY = Math.max(0.001, maxY - minY)
-                const target = {
-                    x: 18,
-                    y: 18,
-                    width: Math.max(1, width - 36),
-                    height: Math.max(1, height - 36)
-                }
-                const scale = Math.min(
-                    target.width / spanX,
-                    target.height / spanY
-                )
-                const displayPoints = []
-                for (let index = 0; index < sourcePoints.length; index += 1) {
-                    displayPoints.push({
-                        x: target.x + target.width / 2
-                            + (sourcePoints[index].x - sourceCenterX) * scale,
-                        y: target.y + target.height / 2
-                            + (sourcePoints[index].y - sourceCenterY) * scale
-                    })
-                }
-
-                const stale = handPanel.handData.staleMs || 0
-                context.globalAlpha = stale <= 250
-                    ? 1 : Math.max(0, 1 - (stale - 250) / 250)
-                context.lineCap = "round"
-                context.lineJoin = "round"
-                context.strokeStyle = handPanel.lineColor
-                context.fillStyle = "#e6fffc"
-                context.lineWidth = Math.max(
-                    1.2,
-                    Math.min(width, height) / 115
-                )
-                for (let index = 0; index < root.handLinks.length; index += 1) {
-                    const link = root.handLinks[index]
-                    const first = displayPoints[link[0]]
-                    const second = displayPoints[link[1]]
-                    context.beginPath()
-                    context.moveTo(first.x, first.y)
-                    context.lineTo(second.x, second.y)
-                    context.stroke()
-                }
-                for (let index = 0; index < displayPoints.length; index += 1) {
-                    const point = displayPoints[index]
-                    context.beginPath()
-                    context.arc(
-                        point.x,
-                        point.y,
-                        Math.max(2, Math.min(width, height) / 70),
-                        0,
-                        Math.PI * 2
-                    )
-                    context.fill()
-                }
-                context.globalAlpha = 1
-            }
-        }
-
-        Connections {
-            target: uiBridge
-            function onChanged() {
-                handCanvas.requestPaint()
-            }
-        }
-    }
-
-    HandPanel {
-        x: 32
-        anchors.bottom: parent.bottom
-        anchors.bottomMargin: 68
-        width: Math.min(350, root.width * 0.23)
-        height: Math.min(270, root.height * 0.28)
-        handData: uiBridge.leftHand
-        fallbackLabel: "LEFT"
-    }
-
-    HandPanel {
-        anchors.right: parent.right
-        anchors.rightMargin: 32
-        anchors.bottom: parent.bottom
-        anchors.bottomMargin: 68
-        width: Math.min(350, root.width * 0.23)
-        height: Math.min(270, root.height * 0.28)
-        handData: uiBridge.rightHand
-        lineColor: root.blue
-        fallbackLabel: "RIGHT"
     }
 
     Item {

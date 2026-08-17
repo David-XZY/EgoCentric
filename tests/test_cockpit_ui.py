@@ -88,12 +88,15 @@ def test_cockpit_qml_loads_and_contains_video_surface(qtbot) -> None:
     assert root.findChild(QQuickItem, "huazhiLogo") is not None
     assert root.findChild(QQuickItem, "productName") is not None
     assert root.findChild(QQuickItem, "cockpitLabel") is not None
-    left_hand_panel = root.findChild(QQuickItem, "handPanel_LEFT")
-    right_hand_panel = root.findChild(QQuickItem, "handPanel_RIGHT")
-    assert left_hand_panel is not None
-    assert right_hand_panel is not None
-    assert left_hand_panel.width() == right_hand_panel.width()
-    assert left_hand_panel.height() == right_hand_panel.height()
+    assert root.findChild(QQuickItem, "handPanel_LEFT") is None
+    assert root.findChild(QQuickItem, "handPanel_RIGHT") is None
+    left_emg_panel = root.findChild(QQuickItem, "emgPanel_LEFT")
+    right_emg_panel = root.findChild(QQuickItem, "emgPanel_RIGHT")
+    assert left_emg_panel is not None
+    assert right_emg_panel is not None
+    assert left_emg_panel.width() == right_emg_panel.width()
+    assert left_emg_panel.height() == right_emg_panel.height()
+    assert left_emg_panel.height() < left_emg_panel.width() * 0.4
     right_metric_dots = root.findChildren(QQuickItem, "rightMetricDot")
     assert len(right_metric_dots) == 4
     assert len(
@@ -126,8 +129,11 @@ def test_cockpit_qml_loads_and_contains_video_surface(qtbot) -> None:
     assert "trajectoryCanvas" not in qml_source
     assert "setLineDash" not in qml_source
     assert "renderedPose" not in qml_source
-    assert "const sourceAspect = 16 / 9" in qml_source
+    assert "component HandPanel" not in qml_source
     assert 'context.fillStyle = "#e6fffc"' in qml_source
     assert "handWristColor" not in qml_source
     assert "root.cameraViewport(root.gestureCamera)" in qml_source
+    assert "context.strokeRect(boxX, boxY, boxWidth, boxHeight)" in qml_source
+    assert "values.length - 1 - index" in qml_source
+    assert "context.createLinearGradient" in qml_source
     view.setSource(QUrl())
