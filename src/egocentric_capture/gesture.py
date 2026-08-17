@@ -263,7 +263,7 @@ class GestureWorker:
         previous = self._previous_landmarks.get(handedness)
         alpha = min(
             1.0,
-            max(0.0, float(self.config.get("smoothing_alpha", 0.35))),
+            max(0.0, float(self.config.get("smoothing_alpha", 0.72))),
         )
         if previous is None or len(previous) != len(landmarks):
             smoothed = landmarks

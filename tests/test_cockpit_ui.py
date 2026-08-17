@@ -9,6 +9,7 @@ os.environ.setdefault("QT_QUICK_BACKEND", "software")
 os.environ.setdefault("QT_OPENGL", "software")
 
 from PySide6.QtCore import QUrl
+from PySide6.QtGui import QImage
 from PySide6.QtQuick import QQuickItem, QQuickView
 
 from egocentric_capture.cockpit_bridge import CockpitBridge
@@ -84,7 +85,7 @@ def test_cockpit_qml_loads_and_contains_video_surface(qtbot) -> None:
     assert isinstance(root, QQuickItem)
     assert root.findChild(QQuickItem, "mosaicVideo") is not None
     assert root.findChild(QQuickItem, "videoHandOverlay") is not None
-    assert root.findChild(QQuickItem, "brandWordmark") is not None
+    assert root.findChild(QQuickItem, "huazhiLogo") is not None
     assert root.findChild(QQuickItem, "productName") is not None
     left_hand_panel = root.findChild(QQuickItem, "handPanel_LEFT")
     right_hand_panel = root.findChild(QQuickItem, "handPanel_RIGHT")
@@ -105,15 +106,21 @@ def test_cockpit_qml_loads_and_contains_video_surface(qtbot) -> None:
     assert root.property("primaryCamera") == "cam_a"
 
     qml_source = qml_path.read_text(encoding="utf-8")
-    font_path = qml_path.parent / "fonts" / "Sora-Variable.ttf"
-    assert font_path.exists()
-    assert 'source: "fonts/Sora-Variable.ttf"' in qml_source
-    assert 'text: "HUAZHI AI"' in qml_source
+    logo_path = qml_path.parent / "huazhi_logo.webp"
+    assert logo_path.exists()
+    logo_image = QImage(str(logo_path))
+    assert not logo_image.isNull()
+    assert logo_image.hasAlphaChannel()
+    assert logo_image.pixelColor(0, 0).alpha() == 0
+    assert 'source: "huazhi_logo.webp"' in qml_source
+    assert "MultiEffect" in qml_source
     assert 'text: "EgoCentric"' in qml_source
     assert "数据驾驶舱  /  DATA COCKPIT" in qml_source
     assert "trajectoryCanvas" not in qml_source
     assert "setLineDash" not in qml_source
     assert "renderedPose" not in qml_source
     assert "const sourceAspect = 16 / 9" in qml_source
+    assert 'context.fillStyle = "#e6fffc"' in qml_source
+    assert "handWristColor" not in qml_source
     assert "root.cameraViewport(root.gestureCamera)" in qml_source
     view.setSource(QUrl())

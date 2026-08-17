@@ -10,13 +10,11 @@
 
 模型仅用于运行时手部关键点与手势识别，不参与原始数据采集和存储格式。
 
-## Sora 字体
+## 华智品牌标识
 
-- 项目：Sora
-- 许可：SIL Open Font License 1.1
-- 来源：Google Fonts 官方仓库
-- 字体文件：`src/egocentric_capture/assets/fonts/Sora-Variable.ttf`
-- 许可文件：`src/egocentric_capture/assets/fonts/OFL-Sora.txt`
+- 权利人：华智（无锡）人工智能科技有限公司
+- 素材来源：公司战略介绍页面 `huazhi-ai-strategy.lovable.app`
+- 资源文件：`src/egocentric_capture/assets/huazhi_logo.webp`
 - 获取日期：2026-08-17
 
-该字体用于驾驶舱透明字标与产品名称显示。
+该标识仅用于本项目所属公司的产品界面品牌展示，相关商标与品牌权利归原权利人所有。

@@ -27,24 +27,8 @@ datas = [
         "egocentric_capture/assets",
     ),
     (
-        str(
-            source
-            / "egocentric_capture"
-            / "assets"
-            / "fonts"
-            / "Sora-Variable.ttf"
-        ),
-        "egocentric_capture/assets/fonts",
-    ),
-    (
-        str(
-            source
-            / "egocentric_capture"
-            / "assets"
-            / "fonts"
-            / "OFL-Sora.txt"
-        ),
-        "egocentric_capture/assets/fonts",
+        str(source / "egocentric_capture" / "assets" / "huazhi_logo.webp"),
+        "egocentric_capture/assets",
     ),
     (
         str(

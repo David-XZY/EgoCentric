@@ -106,7 +106,7 @@ gesture:
   min_tracking_confidence: 0.5
   gesture_score_threshold: 0.55
   pinch_ratio_threshold: 0.22
-  smoothing_alpha: 0.35
+  smoothing_alpha: 0.72
   stale_after_ms: 500
 
 quality:

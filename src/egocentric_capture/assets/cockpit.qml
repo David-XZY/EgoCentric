@@ -1,5 +1,6 @@
 import QtQuick 6.5
 import QtQuick.Controls 6.5
+import QtQuick.Effects 6.5
 import QtQuick.Layouts 6.5
 import org.freedesktop.gstreamer.Qt6GLVideoItem 1.0
 
@@ -15,10 +16,6 @@ Rectangle {
     readonly property color lime: "#b8f166"
     readonly property color red: "#ff5f69"
     readonly property color amber: "#ffd36a"
-    readonly property color leftHandColor: "#50d7e8"
-    readonly property color rightHandColor: "#ffc857"
-    readonly property color handWristColor: "#ff5f57"
-    readonly property color handJointColor: "#f4f6f7"
     readonly property color textColor: "#eefbfa"
     readonly property color mutedColor: "#9eb3b4"
     readonly property int monoSize: Math.max(9, Math.round(height / 90))
@@ -50,16 +47,11 @@ Rectangle {
     readonly property var handLinks: [
         [0, 1], [1, 2], [2, 3], [3, 4],
         [0, 5], [5, 6], [6, 7], [7, 8],
-        [5, 9], [9, 10], [10, 11], [11, 12],
-        [9, 13], [13, 14], [14, 15], [15, 16],
-        [13, 17], [17, 18], [18, 19], [19, 20],
-        [0, 17]
+        [0, 9], [9, 10], [10, 11], [11, 12],
+        [0, 13], [13, 14], [14, 15], [15, 16],
+        [0, 17], [17, 18], [18, 19], [19, 20],
+        [5, 9], [9, 13], [13, 17], [17, 0]
     ]
-
-    FontLoader {
-        id: brandFont
-        source: "fonts/Sora-Variable.ttf"
-    }
 
     signal primaryCameraRequested(string camera)
     signal thumbnailHoverChanged(string camera, bool hovered)
@@ -146,13 +138,13 @@ Rectangle {
             const stale = handData.staleMs || 0
             const fade = stale <= 250
                 ? 1 : Math.max(0, 1 - (stale - 250) / 250)
-            const alpha = fade * (viewport.main ? 0.92 : 0.68)
+            const alpha = fade * (viewport.main ? 0.94 : 0.72)
             const lineWidth = viewport.main
-                ? Math.max(2.2, root.height / 360)
-                : Math.max(1, viewport.height / 70)
+                ? Math.max(1.2, root.height / 560)
+                : Math.max(0.8, viewport.height / 92)
             const jointRadius = viewport.main
-                ? Math.max(2.8, root.height / 300)
-                : Math.max(1.2, viewport.height / 62)
+                ? Math.max(2, root.height / 450)
+                : Math.max(1, viewport.height / 78)
             const mapped = []
             for (let index = 0; index < points.length; index += 1) {
                 mapped.push({
@@ -173,37 +165,26 @@ Rectangle {
             context.globalAlpha = alpha
             context.lineCap = "round"
             context.lineJoin = "round"
-            for (let pass = 0; pass < 2; pass += 1) {
-                context.strokeStyle = pass === 0 ? "#b5000508" : lineColor
-                context.lineWidth = pass === 0
-                    ? lineWidth + (viewport.main ? 3 : 1.5)
-                    : lineWidth
-                for (let index = 0; index < root.handLinks.length; index += 1) {
-                    const link = root.handLinks[index]
-                    context.beginPath()
-                    context.moveTo(mapped[link[0]].x, mapped[link[0]].y)
-                    context.lineTo(mapped[link[1]].x, mapped[link[1]].y)
-                    context.stroke()
-                }
+            context.strokeStyle = lineColor
+            context.lineWidth = lineWidth
+            for (let index = 0; index < root.handLinks.length; index += 1) {
+                const link = root.handLinks[index]
+                context.beginPath()
+                context.moveTo(mapped[link[0]].x, mapped[link[0]].y)
+                context.lineTo(mapped[link[1]].x, mapped[link[1]].y)
+                context.stroke()
             }
             for (let index = 0; index < mapped.length; index += 1) {
                 const point = mapped[index]
-                const radius = index === 0
-                    ? jointRadius * 1.65 : jointRadius
-                context.fillStyle = "#d8000508"
+                context.fillStyle = "#e6fffc"
                 context.beginPath()
                 context.arc(
                     point.x,
                     point.y,
-                    radius + (viewport.main ? 1.7 : 0.7),
+                    jointRadius,
                     0,
                     Math.PI * 2
                 )
-                context.fill()
-                context.fillStyle = index === 0
-                    ? root.handWristColor : root.handJointColor
-                context.beginPath()
-                context.arc(point.x, point.y, radius, 0, Math.PI * 2)
                 context.fill()
             }
             context.restore()
@@ -216,13 +197,13 @@ Rectangle {
             drawHand(
                 context,
                 uiBridge.leftHand,
-                root.leftHandColor,
+                root.cyan,
                 viewport
             )
             drawHand(
                 context,
                 uiBridge.rightHand,
-                root.rightHandColor,
+                root.blue,
                 viewport
             )
         }
@@ -412,46 +393,34 @@ Rectangle {
     Item {
         id: brand
         x: 20
-        y: 10
-        width: Math.min(500, root.width * 0.44)
+        y: 8
+        width: Math.min(540, root.width * 0.48)
         height: 70
 
-        Item {
-            id: brandWordmarkArea
-            width: 195
-            height: parent.height
-
-            Text {
-                x: 2
-                y: 18
-                text: "HUAZHI AI"
-                color: "#c9000508"
-                font.family: brandFont.status === FontLoader.Ready
-                    ? brandFont.name : "Noto Sans Display"
-                font.pixelSize: 25
-                font.weight: Font.Bold
-                font.letterSpacing: 0
-            }
-
-            Text {
-                id: brandWordmark
-                objectName: "brandWordmark"
-                x: 0
-                y: 15
-                text: "HUAZHI AI"
-                color: "#f3ffff"
-                style: Text.Outline
-                styleColor: "#d000080c"
-                font.family: brandFont.status === FontLoader.Ready
-                    ? brandFont.name : "Noto Sans Display"
-                font.pixelSize: 25
-                font.weight: Font.Bold
-                font.letterSpacing: 0
+        Image {
+            id: huazhiLogo
+            objectName: "huazhiLogo"
+            x: 0
+            y: 2
+            width: 232
+            height: 66
+            source: "huazhi_logo.webp"
+            fillMode: Image.PreserveAspectFit
+            smooth: true
+            mipmap: true
+            layer.enabled: true
+            layer.effect: MultiEffect {
+                shadowEnabled: true
+                shadowColor: "#d9fbff"
+                shadowOpacity: 0.68
+                shadowBlur: 0.52
+                shadowHorizontalOffset: 0
+                shadowVerticalOffset: 0
             }
         }
 
         Rectangle {
-            x: 201
+            x: 242
             y: 15
             width: 1
             height: 39
@@ -460,7 +429,7 @@ Rectangle {
         }
 
         Column {
-            x: 218
+            x: 258
             y: 12
             spacing: 1
 
@@ -471,8 +440,7 @@ Rectangle {
                 color: root.textColor
                 style: Text.Outline
                 styleColor: "#d000080c"
-                font.family: brandFont.status === FontLoader.Ready
-                    ? brandFont.name : "Noto Sans Display"
+                font.family: "Noto Sans Display"
                 font.pixelSize: 18
                 font.weight: Font.DemiBold
                 font.letterSpacing: 0
@@ -932,47 +900,31 @@ Rectangle {
                     ? 1 : Math.max(0, 1 - (stale - 250) / 250)
                 context.lineCap = "round"
                 context.lineJoin = "round"
-                const lineWidth = Math.max(
-                    2,
-                    Math.min(width, height) / 82
+                context.strokeStyle = handPanel.lineColor
+                context.fillStyle = "#e6fffc"
+                context.lineWidth = Math.max(
+                    1.2,
+                    Math.min(width, height) / 115
                 )
-                for (let pass = 0; pass < 2; pass += 1) {
-                    context.strokeStyle = pass === 0
-                        ? "#bd000508" : handPanel.lineColor
-                    context.lineWidth = pass === 0
-                        ? lineWidth + 2.4 : lineWidth
-                    for (let index = 0; index < root.handLinks.length; index += 1) {
-                        const link = root.handLinks[index]
-                        const first = displayPoints[link[0]]
-                        const second = displayPoints[link[1]]
-                        context.beginPath()
-                        context.moveTo(first.x, first.y)
-                        context.lineTo(second.x, second.y)
-                        context.stroke()
-                    }
+                for (let index = 0; index < root.handLinks.length; index += 1) {
+                    const link = root.handLinks[index]
+                    const first = displayPoints[link[0]]
+                    const second = displayPoints[link[1]]
+                    context.beginPath()
+                    context.moveTo(first.x, first.y)
+                    context.lineTo(second.x, second.y)
+                    context.stroke()
                 }
-                const baseRadius = Math.max(
-                    3.2,
-                    Math.min(width, height) / 62
-                )
                 for (let index = 0; index < displayPoints.length; index += 1) {
                     const point = displayPoints[index]
-                    const radius = index === 0
-                        ? baseRadius * 1.5 : baseRadius
-                    context.fillStyle = "#d5000508"
                     context.beginPath()
                     context.arc(
                         point.x,
                         point.y,
-                        radius + 1.8,
+                        Math.max(2, Math.min(width, height) / 70),
                         0,
                         Math.PI * 2
                     )
-                    context.fill()
-                    context.fillStyle = index === 0
-                        ? root.handWristColor : root.handJointColor
-                    context.beginPath()
-                    context.arc(point.x, point.y, radius, 0, Math.PI * 2)
                     context.fill()
                 }
                 context.globalAlpha = 1
@@ -994,7 +946,6 @@ Rectangle {
         width: Math.min(350, root.width * 0.23)
         height: Math.min(270, root.height * 0.28)
         handData: uiBridge.leftHand
-        lineColor: root.leftHandColor
         fallbackLabel: "LEFT"
     }
 
@@ -1006,7 +957,7 @@ Rectangle {
         width: Math.min(350, root.width * 0.23)
         height: Math.min(270, root.height * 0.28)
         handData: uiBridge.rightHand
-        lineColor: root.rightHandColor
+        lineColor: root.blue
         fallbackLabel: "RIGHT"
     }
 
