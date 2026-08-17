@@ -59,8 +59,8 @@ def test_landmark_smoothing_and_short_stale_window() -> None:
 
     assert worker._smooth("LEFT", first) == first
     smoothed = worker._smooth("LEFT", second)
-    assert config["inference_fps"] == 12
-    assert smoothed[0] == (0.72, 0.72, 0.72)
+    assert config["inference_fps"] == 25
+    assert smoothed[0] == (1.0, 1.0, 1.0)
 
     now = time.monotonic_ns()
     previous = simulated_gesture_frame(now).hands[0]

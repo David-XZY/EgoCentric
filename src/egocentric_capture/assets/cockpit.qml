@@ -1,6 +1,5 @@
 import QtQuick 6.5
 import QtQuick.Controls 6.5
-import QtQuick.Effects 6.5
 import QtQuick.Layouts 6.5
 import org.freedesktop.gstreamer.Qt6GLVideoItem 1.0
 
@@ -404,19 +403,10 @@ Rectangle {
             y: 2
             width: 232
             height: 66
-            source: "huazhi_logo.webp"
+            source: "huazhi_logo_hud.png"
             fillMode: Image.PreserveAspectFit
             smooth: true
             mipmap: true
-            layer.enabled: true
-            layer.effect: MultiEffect {
-                shadowEnabled: true
-                shadowColor: "#d9fbff"
-                shadowOpacity: 0.68
-                shadowBlur: 0.52
-                shadowHorizontalOffset: 0
-                shadowVerticalOffset: 0
-            }
         }
 
         Rectangle {

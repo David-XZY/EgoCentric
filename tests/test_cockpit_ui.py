@@ -107,13 +107,19 @@ def test_cockpit_qml_loads_and_contains_video_surface(qtbot) -> None:
 
     qml_source = qml_path.read_text(encoding="utf-8")
     logo_path = qml_path.parent / "huazhi_logo.webp"
+    hud_logo_path = qml_path.parent / "huazhi_logo_hud.png"
     assert logo_path.exists()
+    assert hud_logo_path.exists()
     logo_image = QImage(str(logo_path))
+    hud_logo_image = QImage(str(hud_logo_path))
     assert not logo_image.isNull()
+    assert not hud_logo_image.isNull()
     assert logo_image.hasAlphaChannel()
+    assert hud_logo_image.hasAlphaChannel()
     assert logo_image.pixelColor(0, 0).alpha() == 0
-    assert 'source: "huazhi_logo.webp"' in qml_source
-    assert "MultiEffect" in qml_source
+    assert hud_logo_image.pixelColor(0, 0).alpha() == 0
+    assert 'source: "huazhi_logo_hud.png"' in qml_source
+    assert "MultiEffect" not in qml_source
     assert 'text: "EgoCentric"' in qml_source
     assert "数据驾驶舱  /  DATA COCKPIT" in qml_source
     assert "trajectoryCanvas" not in qml_source

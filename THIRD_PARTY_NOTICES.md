@@ -14,7 +14,8 @@
 
 - 权利人：华智（无锡）人工智能科技有限公司
 - 素材来源：公司战略介绍页面 `huazhi-ai-strategy.lovable.app`
-- 资源文件：`src/egocentric_capture/assets/huazhi_logo.webp`
+- 原始资源：`src/egocentric_capture/assets/huazhi_logo.webp`
+- HUD 高亮资源：`src/egocentric_capture/assets/huazhi_logo_hud.png`
 - 获取日期：2026-08-17
 
-该标识仅用于本项目所属公司的产品界面品牌展示，相关商标与品牌权利归原权利人所有。
+HUD 高亮资源仅基于原始透明蒙版调整颜色和外轮廓。该标识仅用于本项目所属公司的产品界面品牌展示，相关商标与品牌权利归原权利人所有。
