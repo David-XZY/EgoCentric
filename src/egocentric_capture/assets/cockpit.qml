@@ -421,7 +421,7 @@ Rectangle {
         Column {
             x: 258
             y: 12
-            spacing: 1
+            spacing: 0
 
             Text {
                 id: productName
@@ -435,20 +435,41 @@ Rectangle {
                 font.weight: Font.DemiBold
                 font.letterSpacing: 0
             }
-            Text {
-                text: "数据驾驶舱  /  DATA COCKPIT"
-                color: "#c6f8f2"
-                style: Text.Outline
-                styleColor: "#d000080c"
-                font.family: "monospace"
-                font.pixelSize: 9
-                font.letterSpacing: 0
+
+            Item {
+                width: cockpitLabel.implicitWidth + 2
+                height: cockpitLabel.implicitHeight + 1
+
+                Text {
+                    x: 1
+                    y: 1
+                    text: cockpitLabel.text
+                    color: "#00080c"
+                    opacity: 0.78
+                    font: cockpitLabel.font
+                }
+
+                Text {
+                    id: cockpitLabel
+                    objectName: "cockpitLabel"
+                    text: "数据驾驶舱  /  DATA COCKPIT"
+                    color: "#c6f8f2"
+                    font.family: "monospace"
+                    font.pixelSize: 9
+                    font.letterSpacing: 0
+                }
             }
+
+            Item {
+                width: 1
+                height: 6
+            }
+
             Rectangle {
-                width: 112
+                width: Math.min(250, cockpitLabel.implicitWidth + 42)
                 height: 1
                 color: root.blue
-                opacity: 0.56
+                opacity: 0.62
             }
         }
     }

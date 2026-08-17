@@ -87,6 +87,7 @@ def test_cockpit_qml_loads_and_contains_video_surface(qtbot) -> None:
     assert root.findChild(QQuickItem, "videoHandOverlay") is not None
     assert root.findChild(QQuickItem, "huazhiLogo") is not None
     assert root.findChild(QQuickItem, "productName") is not None
+    assert root.findChild(QQuickItem, "cockpitLabel") is not None
     left_hand_panel = root.findChild(QQuickItem, "handPanel_LEFT")
     right_hand_panel = root.findChild(QQuickItem, "handPanel_RIGHT")
     assert left_hand_panel is not None
