@@ -15,10 +15,15 @@ Rectangle {
     readonly property color lime: "#b8f166"
     readonly property color red: "#ff5f69"
     readonly property color amber: "#ffd36a"
+    readonly property color leftHandColor: "#50d7e8"
+    readonly property color rightHandColor: "#ffc857"
+    readonly property color handWristColor: "#ff5f57"
+    readonly property color handJointColor: "#f4f6f7"
     readonly property color textColor: "#eefbfa"
     readonly property color mutedColor: "#9eb3b4"
     readonly property int monoSize: Math.max(9, Math.round(height / 90))
     property string primaryCamera: "cam_a"
+    readonly property string gestureCamera: "cam_a"
     readonly property real thumbnailStartRatio: 0.3148
     readonly property real thumbnailStepRatio: 0.125
     readonly property real thumbnailWidthRatio: 0.1195
@@ -45,11 +50,16 @@ Rectangle {
     readonly property var handLinks: [
         [0, 1], [1, 2], [2, 3], [3, 4],
         [0, 5], [5, 6], [6, 7], [7, 8],
-        [0, 9], [9, 10], [10, 11], [11, 12],
-        [0, 13], [13, 14], [14, 15], [15, 16],
-        [0, 17], [17, 18], [18, 19], [19, 20],
-        [5, 9], [9, 13], [13, 17], [17, 0]
+        [5, 9], [9, 10], [10, 11], [11, 12],
+        [9, 13], [13, 14], [14, 15], [15, 16],
+        [13, 17], [17, 18], [18, 19], [19, 20],
+        [0, 17]
     ]
+
+    FontLoader {
+        id: brandFont
+        source: "fonts/Sora-Variable.ttf"
+    }
 
     signal primaryCameraRequested(string camera)
     signal thumbnailHoverChanged(string camera, bool hovered)
@@ -58,6 +68,37 @@ Rectangle {
         if (camera === root.primaryCamera)
             return
         root.primaryCameraRequested(camera)
+    }
+
+    function cameraViewport(camera) {
+        if (camera === root.primaryCamera) {
+            return {
+                x: 0,
+                y: 0,
+                width: root.width,
+                height: root.height,
+                main: true
+            }
+        }
+        let auxiliaryIndex = -1
+        for (let index = 0; index < root.auxiliaryCameras.length; index += 1) {
+            if (root.auxiliaryCameras[index].camera === camera) {
+                auxiliaryIndex = index
+                break
+            }
+        }
+        if (auxiliaryIndex < 0)
+            return { x: 0, y: 0, width: 0, height: 0, main: false }
+        return {
+            x: (
+                root.thumbnailStartRatio
+                + auxiliaryIndex * root.thumbnailStepRatio
+            ) * root.width,
+            y: 0.8556 * root.height,
+            width: root.thumbnailWidthRatio * root.width,
+            height: 0.1194 * root.height,
+            main: false
+        }
     }
 
     Image {
@@ -92,6 +133,111 @@ Rectangle {
         border.width: 1
         opacity: 0.45
     }
+
+    Canvas {
+        id: videoHandOverlay
+        objectName: "videoHandOverlay"
+        anchors.fill: parent
+
+        function drawHand(context, handData, lineColor, viewport) {
+            const points = handData.landmarks || []
+            if (points.length < 21 || viewport.width <= 0)
+                return
+            const stale = handData.staleMs || 0
+            const fade = stale <= 250
+                ? 1 : Math.max(0, 1 - (stale - 250) / 250)
+            const alpha = fade * (viewport.main ? 0.92 : 0.68)
+            const lineWidth = viewport.main
+                ? Math.max(2.2, root.height / 360)
+                : Math.max(1, viewport.height / 70)
+            const jointRadius = viewport.main
+                ? Math.max(2.8, root.height / 300)
+                : Math.max(1.2, viewport.height / 62)
+            const mapped = []
+            for (let index = 0; index < points.length; index += 1) {
+                mapped.push({
+                    x: viewport.x + points[index].x * viewport.width,
+                    y: viewport.y + points[index].y * viewport.height
+                })
+            }
+
+            context.save()
+            context.beginPath()
+            context.rect(
+                viewport.x,
+                viewport.y,
+                viewport.width,
+                viewport.height
+            )
+            context.clip()
+            context.globalAlpha = alpha
+            context.lineCap = "round"
+            context.lineJoin = "round"
+            for (let pass = 0; pass < 2; pass += 1) {
+                context.strokeStyle = pass === 0 ? "#b5000508" : lineColor
+                context.lineWidth = pass === 0
+                    ? lineWidth + (viewport.main ? 3 : 1.5)
+                    : lineWidth
+                for (let index = 0; index < root.handLinks.length; index += 1) {
+                    const link = root.handLinks[index]
+                    context.beginPath()
+                    context.moveTo(mapped[link[0]].x, mapped[link[0]].y)
+                    context.lineTo(mapped[link[1]].x, mapped[link[1]].y)
+                    context.stroke()
+                }
+            }
+            for (let index = 0; index < mapped.length; index += 1) {
+                const point = mapped[index]
+                const radius = index === 0
+                    ? jointRadius * 1.65 : jointRadius
+                context.fillStyle = "#d8000508"
+                context.beginPath()
+                context.arc(
+                    point.x,
+                    point.y,
+                    radius + (viewport.main ? 1.7 : 0.7),
+                    0,
+                    Math.PI * 2
+                )
+                context.fill()
+                context.fillStyle = index === 0
+                    ? root.handWristColor : root.handJointColor
+                context.beginPath()
+                context.arc(point.x, point.y, radius, 0, Math.PI * 2)
+                context.fill()
+            }
+            context.restore()
+        }
+
+        onPaint: {
+            const context = getContext("2d")
+            context.clearRect(0, 0, width, height)
+            const viewport = root.cameraViewport(root.gestureCamera)
+            drawHand(
+                context,
+                uiBridge.leftHand,
+                root.leftHandColor,
+                viewport
+            )
+            drawHand(
+                context,
+                uiBridge.rightHand,
+                root.rightHandColor,
+                viewport
+            )
+        }
+
+        Connections {
+            target: uiBridge
+            function onChanged() {
+                videoHandOverlay.requestPaint()
+            }
+        }
+    }
+
+    onPrimaryCameraChanged: videoHandOverlay.requestPaint()
+    onWidthChanged: videoHandOverlay.requestPaint()
+    onHeightChanged: videoHandOverlay.requestPaint()
 
     component CornerLine: Item {
         property bool rightSide: false
@@ -266,40 +412,86 @@ Rectangle {
     Item {
         id: brand
         x: 20
-        y: 12
-        width: Math.min(300, root.width * 0.27)
-        height: 66
+        y: 10
+        width: Math.min(500, root.width * 0.44)
+        height: 70
 
-        Rectangle {
-            anchors.fill: parent
-            color: "#eef7f8"
-            border.color: "#7052f4df"
-            border.width: 1
-            radius: 3
+        Item {
+            id: brandWordmarkArea
+            width: 195
+            height: parent.height
 
-            Image {
-                id: huazhiLogo
-                objectName: "huazhiLogo"
-                anchors {
-                    fill: parent
-                    leftMargin: 12
-                    rightMargin: 12
-                    topMargin: 7
-                    bottomMargin: 7
-                }
-                source: "huazhi_logo.webp"
-                fillMode: Image.PreserveAspectFit
-                smooth: true
-                mipmap: true
+            Text {
+                x: 2
+                y: 18
+                text: "HUAZHI AI"
+                color: "#c9000508"
+                font.family: brandFont.status === FontLoader.Ready
+                    ? brandFont.name : "Noto Sans Display"
+                font.pixelSize: 25
+                font.weight: Font.Bold
+                font.letterSpacing: 0
+            }
+
+            Text {
+                id: brandWordmark
+                objectName: "brandWordmark"
+                x: 0
+                y: 15
+                text: "HUAZHI AI"
+                color: "#f3ffff"
+                style: Text.Outline
+                styleColor: "#d000080c"
+                font.family: brandFont.status === FontLoader.Ready
+                    ? brandFont.name : "Noto Sans Display"
+                font.pixelSize: 25
+                font.weight: Font.Bold
+                font.letterSpacing: 0
             }
         }
 
         Rectangle {
-            anchors.left: parent.left
-            anchors.bottom: parent.bottom
-            width: 78
-            height: 2
+            x: 201
+            y: 15
+            width: 1
+            height: 39
             color: root.cyan
+            opacity: 0.58
+        }
+
+        Column {
+            x: 218
+            y: 12
+            spacing: 1
+
+            Text {
+                id: productName
+                objectName: "productName"
+                text: "EgoCentric"
+                color: root.textColor
+                style: Text.Outline
+                styleColor: "#d000080c"
+                font.family: brandFont.status === FontLoader.Ready
+                    ? brandFont.name : "Noto Sans Display"
+                font.pixelSize: 18
+                font.weight: Font.DemiBold
+                font.letterSpacing: 0
+            }
+            Text {
+                text: "数据驾驶舱  /  DATA COCKPIT"
+                color: "#c6f8f2"
+                style: Text.Outline
+                styleColor: "#d000080c"
+                font.family: "monospace"
+                font.pixelSize: 9
+                font.letterSpacing: 0
+            }
+            Rectangle {
+                width: 112
+                height: 1
+                color: root.blue
+                opacity: 0.56
+            }
         }
     }
 
@@ -386,33 +578,55 @@ Rectangle {
         }
     }
 
-    component MetricRow: Row {
+    component MetricRow: Item {
+        id: metricRow
         property string labelText: ""
         property string valueText: ""
         property color dotColor: root.cyan
         property bool reverse: false
-        spacing: 10
-        layoutDirection: reverse ? Qt.RightToLeft : Qt.LeftToRight
+        width: 250
+        height: Math.max(
+            metricDot.height,
+            metricLabel.implicitHeight,
+            metricValue.implicitHeight
+        )
 
         Rectangle {
+            id: metricDot
+            objectName: metricRow.reverse
+                ? "rightMetricDot" : "leftMetricDot"
             width: 5
             height: 5
             radius: 3
-            color: dotColor
+            color: metricRow.dotColor
             anchors.verticalCenter: parent.verticalCenter
+            anchors.left: metricRow.reverse ? undefined : parent.left
+            anchors.right: metricRow.reverse ? parent.right : undefined
         }
         Text {
-            text: labelText
+            id: metricLabel
+            text: metricRow.labelText
             color: root.mutedColor
             font.family: "monospace"
             font.pixelSize: root.monoSize
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.left: metricRow.reverse ? undefined : metricDot.right
+            anchors.right: metricRow.reverse ? metricDot.left : undefined
+            anchors.leftMargin: metricRow.reverse ? 0 : 10
+            anchors.rightMargin: metricRow.reverse ? 10 : 0
         }
         Text {
-            text: valueText
+            id: metricValue
+            text: metricRow.valueText
             color: root.textColor
             font.family: "monospace"
             font.pixelSize: root.monoSize
             font.bold: true
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.left: metricRow.reverse ? undefined : metricLabel.right
+            anchors.right: metricRow.reverse ? metricLabel.left : undefined
+            anchors.leftMargin: metricRow.reverse ? 0 : 10
+            anchors.rightMargin: metricRow.reverse ? 10 : 0
         }
     }
 
@@ -438,6 +652,7 @@ Rectangle {
     Column {
         x: 37
         y: Math.max(340, root.height * 0.38)
+        width: 250
         spacing: 11
 
         MetricRow {
@@ -465,6 +680,7 @@ Rectangle {
         anchors.right: parent.right
         anchors.rightMargin: 37
         y: Math.max(340, root.height * 0.38)
+        width: 250
         spacing: 11
 
         MetricRow {
@@ -609,8 +825,8 @@ Rectangle {
 
     component HandPanel: Item {
         id: handPanel
+        objectName: "handPanel_" + fallbackLabel
         property var handData: ({})
-        property var renderedPose: []
         property color lineColor: root.cyan
         property string fallbackLabel: ""
 
@@ -659,6 +875,7 @@ Rectangle {
 
         Canvas {
             id: handCanvas
+            objectName: "handCanvas_" + handPanel.fallbackLabel
             anchors.fill: parent
             anchors.topMargin: 24
 
@@ -666,189 +883,96 @@ Rectangle {
                 const context = getContext("2d")
                 context.clearRect(0, 0, width, height)
                 const points = handPanel.handData.landmarks || []
-                if (points.length < 21) {
-                    handPanel.renderedPose = []
+                if (points.length < 21)
                     return
-                }
 
                 const sourceAspect = 16 / 9
-                function sourceDirection(first, second, fallbackX, fallbackY) {
-                    const deltaX = (
-                        points[second].x - points[first].x
-                    ) * sourceAspect
-                    const deltaY = points[second].y - points[first].y
-                    const magnitude = Math.hypot(deltaX, deltaY)
-                    if (magnitude < 0.0001)
-                        return { x: fallbackX, y: fallbackY }
-                    return { x: deltaX / magnitude, y: deltaY / magnitude }
+                const sourcePoints = []
+                let minX = points[0].x * sourceAspect
+                let maxX = minX
+                let minY = points[0].y
+                let maxY = minY
+                for (let index = 0; index < points.length; index += 1) {
+                    const sourcePoint = {
+                        x: points[index].x * sourceAspect,
+                        y: points[index].y
+                    }
+                    sourcePoints.push(sourcePoint)
+                    minX = Math.min(minX, sourcePoint.x)
+                    maxX = Math.max(maxX, sourcePoint.x)
+                    minY = Math.min(minY, sourcePoint.y)
+                    maxY = Math.max(maxY, sourcePoint.y)
                 }
-
-                const sourceForward = sourceDirection(0, 9, 0, -1)
-                let sourceSide = sourceDirection(5, 17, 1, 0)
-                const sideProjection = (
-                    sourceSide.x * sourceForward.x
-                    + sourceSide.y * sourceForward.y
+                const sourceCenterX = (minX + maxX) / 2
+                const sourceCenterY = (minY + maxY) / 2
+                const spanX = Math.max(0.001, maxX - minX)
+                const spanY = Math.max(0.001, maxY - minY)
+                const target = {
+                    x: 18,
+                    y: 18,
+                    width: Math.max(1, width - 36),
+                    height: Math.max(1, height - 36)
+                }
+                const scale = Math.min(
+                    target.width / spanX,
+                    target.height / spanY
                 )
-                sourceSide = {
-                    x: sourceSide.x - sideProjection * sourceForward.x,
-                    y: sourceSide.y - sideProjection * sourceForward.y
+                const displayPoints = []
+                for (let index = 0; index < sourcePoints.length; index += 1) {
+                    displayPoints.push({
+                        x: target.x + target.width / 2
+                            + (sourcePoints[index].x - sourceCenterX) * scale,
+                        y: target.y + target.height / 2
+                            + (sourcePoints[index].y - sourceCenterY) * scale
+                    })
                 }
-                const sideMagnitude = Math.hypot(
-                    sourceSide.x,
-                    sourceSide.y
-                )
-                if (sideMagnitude < 0.0001) {
-                    sourceSide = {
-                        x: -sourceForward.y,
-                        y: sourceForward.x
-                    }
-                } else {
-                    sourceSide = {
-                        x: sourceSide.x / sideMagnitude,
-                        y: sourceSide.y / sideMagnitude
-                    }
-                }
-
-                const unit = Math.min(width, height)
-                const palmLength = unit * 0.235
-                const palmWidth = unit * 0.27
-                const forward = { x: 0, y: -1 }
-                const side = {
-                    x: handPanel.fallbackLabel === "RIGHT" ? -1 : 1,
-                    y: 0
-                }
-                const wrist = { x: width * 0.5, y: height * 0.68 }
-                const targetPose = new Array(21)
-                targetPose[0] = wrist
-
-                function palmPoint(forwardRatio, sideRatio) {
-                    return {
-                        x: wrist.x
-                            + forward.x * palmLength * forwardRatio
-                            + side.x * palmWidth * sideRatio,
-                        y: wrist.y
-                            + forward.y * palmLength * forwardRatio
-                            + side.y * palmWidth * sideRatio
-                    }
-                }
-
-                targetPose[1] = palmPoint(0.20, -0.60)
-                targetPose[5] = palmPoint(0.84, -0.50)
-                targetPose[9] = palmPoint(1.00, -0.16)
-                targetPose[13] = palmPoint(0.96, 0.18)
-                targetPose[17] = palmPoint(0.76, 0.50)
-
-                function retargetDirection(first, second) {
-                    const source = sourceDirection(
-                        first,
-                        second,
-                        sourceForward.x,
-                        sourceForward.y
-                    )
-                    const sideAmount = (
-                        source.x * sourceSide.x
-                        + source.y * sourceSide.y
-                    )
-                    const forwardAmount = (
-                        source.x * sourceForward.x
-                        + source.y * sourceForward.y
-                    )
-                    const targetX = (
-                        side.x * sideAmount
-                        + forward.x * forwardAmount
-                    )
-                    const targetY = (
-                        side.y * sideAmount
-                        + forward.y * forwardAmount
-                    )
-                    const magnitude = Math.hypot(targetX, targetY)
-                    if (magnitude < 0.0001)
-                        return forward
-                    return {
-                        x: targetX / magnitude,
-                        y: targetY / magnitude
-                    }
-                }
-
-                function extend(first, second, length) {
-                    const direction = retargetDirection(first, second)
-                    targetPose[second] = {
-                        x: targetPose[first].x + direction.x * length,
-                        y: targetPose[first].y + direction.y * length
-                    }
-                }
-
-                extend(1, 2, unit * 0.14)
-                extend(2, 3, unit * 0.12)
-                extend(3, 4, unit * 0.105)
-
-                const fingerChains = [
-                    [5, 6, 7, 8, 0.165, 0.125, 0.095],
-                    [9, 10, 11, 12, 0.18, 0.14, 0.105],
-                    [13, 14, 15, 16, 0.17, 0.13, 0.10],
-                    [17, 18, 19, 20, 0.145, 0.11, 0.085]
-                ]
-                for (let chainIndex = 0; chainIndex < fingerChains.length; chainIndex += 1) {
-                    const chain = fingerChains[chainIndex]
-                    extend(
-                        chain[0],
-                        chain[1],
-                        unit * chain[4]
-                    )
-                    extend(
-                        chain[1],
-                        chain[2],
-                        unit * chain[5]
-                    )
-                    extend(
-                        chain[2],
-                        chain[3],
-                        unit * chain[6]
-                    )
-                }
-
-                const previousPose = handPanel.renderedPose
-                const displayPose = new Array(21)
-                const blend = previousPose.length === 21 ? 0.34 : 1
-                for (let poseIndex = 0; poseIndex < targetPose.length; poseIndex += 1) {
-                    const previous = previousPose.length === 21
-                        ? previousPose[poseIndex] : targetPose[poseIndex]
-                    displayPose[poseIndex] = {
-                        x: previous.x + (
-                            targetPose[poseIndex].x - previous.x
-                        ) * blend,
-                        y: previous.y + (
-                            targetPose[poseIndex].y - previous.y
-                        ) * blend
-                    }
-                }
-                handPanel.renderedPose = displayPose
 
                 const stale = handPanel.handData.staleMs || 0
                 context.globalAlpha = stale <= 250
                     ? 1 : Math.max(0, 1 - (stale - 250) / 250)
-                context.strokeStyle = handPanel.lineColor
-                context.fillStyle = "#e6fffc"
-                context.lineWidth = Math.max(1.2, Math.min(width, height) / 115)
-                for (let index = 0; index < root.handLinks.length; index += 1) {
-                    const link = root.handLinks[index]
-                    const first = displayPose[link[0]]
-                    const second = displayPose[link[1]]
-                    context.beginPath()
-                    context.moveTo(first.x, first.y)
-                    context.lineTo(second.x, second.y)
-                    context.stroke()
+                context.lineCap = "round"
+                context.lineJoin = "round"
+                const lineWidth = Math.max(
+                    2,
+                    Math.min(width, height) / 82
+                )
+                for (let pass = 0; pass < 2; pass += 1) {
+                    context.strokeStyle = pass === 0
+                        ? "#bd000508" : handPanel.lineColor
+                    context.lineWidth = pass === 0
+                        ? lineWidth + 2.4 : lineWidth
+                    for (let index = 0; index < root.handLinks.length; index += 1) {
+                        const link = root.handLinks[index]
+                        const first = displayPoints[link[0]]
+                        const second = displayPoints[link[1]]
+                        context.beginPath()
+                        context.moveTo(first.x, first.y)
+                        context.lineTo(second.x, second.y)
+                        context.stroke()
+                    }
                 }
-                for (let pointIndex = 0; pointIndex < displayPose.length; pointIndex += 1) {
-                    const point = displayPose[pointIndex]
+                const baseRadius = Math.max(
+                    3.2,
+                    Math.min(width, height) / 62
+                )
+                for (let index = 0; index < displayPoints.length; index += 1) {
+                    const point = displayPoints[index]
+                    const radius = index === 0
+                        ? baseRadius * 1.5 : baseRadius
+                    context.fillStyle = "#d5000508"
                     context.beginPath()
                     context.arc(
                         point.x,
                         point.y,
-                        Math.max(2, Math.min(width, height) / 70),
+                        radius + 1.8,
                         0,
                         Math.PI * 2
                     )
+                    context.fill()
+                    context.fillStyle = index === 0
+                        ? root.handWristColor : root.handJointColor
+                    context.beginPath()
+                    context.arc(point.x, point.y, radius, 0, Math.PI * 2)
                     context.fill()
                 }
                 context.globalAlpha = 1
@@ -870,6 +994,7 @@ Rectangle {
         width: Math.min(350, root.width * 0.23)
         height: Math.min(270, root.height * 0.28)
         handData: uiBridge.leftHand
+        lineColor: root.leftHandColor
         fallbackLabel: "LEFT"
     }
 
@@ -881,7 +1006,7 @@ Rectangle {
         width: Math.min(350, root.width * 0.23)
         height: Math.min(270, root.height * 0.28)
         handData: uiBridge.rightHand
-        lineColor: root.blue
+        lineColor: root.rightHandColor
         fallbackLabel: "RIGHT"
     }
 

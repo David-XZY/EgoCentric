@@ -83,7 +83,20 @@ def test_cockpit_qml_loads_and_contains_video_surface(qtbot) -> None:
     root = view.rootObject()
     assert isinstance(root, QQuickItem)
     assert root.findChild(QQuickItem, "mosaicVideo") is not None
-    assert root.findChild(QQuickItem, "huazhiLogo") is not None
+    assert root.findChild(QQuickItem, "videoHandOverlay") is not None
+    assert root.findChild(QQuickItem, "brandWordmark") is not None
+    assert root.findChild(QQuickItem, "productName") is not None
+    left_hand_panel = root.findChild(QQuickItem, "handPanel_LEFT")
+    right_hand_panel = root.findChild(QQuickItem, "handPanel_RIGHT")
+    assert left_hand_panel is not None
+    assert right_hand_panel is not None
+    assert left_hand_panel.width() == right_hand_panel.width()
+    assert left_hand_panel.height() == right_hand_panel.height()
+    right_metric_dots = root.findChildren(QQuickItem, "rightMetricDot")
+    assert len(right_metric_dots) == 4
+    assert len(
+        {round(float(dot.property("x")), 3) for dot in right_metric_dots}
+    ) == 1
     assert root.property("primaryCamera") == "cam_a"
     requested = []
     root.primaryCameraRequested.connect(requested.append)
@@ -92,9 +105,15 @@ def test_cockpit_qml_loads_and_contains_video_surface(qtbot) -> None:
     assert root.property("primaryCamera") == "cam_a"
 
     qml_source = qml_path.read_text(encoding="utf-8")
-    assert 'source: "huazhi_logo.webp"' in qml_source
+    font_path = qml_path.parent / "fonts" / "Sora-Variable.ttf"
+    assert font_path.exists()
+    assert 'source: "fonts/Sora-Variable.ttf"' in qml_source
+    assert 'text: "HUAZHI AI"' in qml_source
+    assert 'text: "EgoCentric"' in qml_source
+    assert "数据驾驶舱  /  DATA COCKPIT" in qml_source
     assert "trajectoryCanvas" not in qml_source
     assert "setLineDash" not in qml_source
-    assert "sourceSpan" not in qml_source
-    assert "const palmLength" in qml_source
+    assert "renderedPose" not in qml_source
+    assert "const sourceAspect = 16 / 9" in qml_source
+    assert "root.cameraViewport(root.gestureCamera)" in qml_source
     view.setSource(QUrl())
