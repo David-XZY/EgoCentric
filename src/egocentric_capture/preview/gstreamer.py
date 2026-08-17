@@ -108,6 +108,15 @@ def configure_preview_sink(
     element.set_property("throttle-time", 0)
 
 
+def native_video_caps(width: int, height: int, fps: int) -> str:
+    return (
+        "video/x-raw,"
+        f"width={max(1, width)},"
+        f"height={max(1, height)},"
+        f"framerate={max(1, fps)}/1"
+    )
+
+
 def cockpit_layout(
     width: int,
     height: int,
@@ -214,6 +223,9 @@ class _GstreamerBackend:
         self.analysis_width = max(160, int(config.get("analysis_width", 640)))
         self.analysis_height = max(90, int(config.get("analysis_height", 360)))
         self.analysis_fps = max(1, int(config.get("analysis_fps", 12)))
+        self.source_width = max(1, int(config.get("source_width", 1920)))
+        self.source_height = max(1, int(config.get("source_height", 1080)))
+        self.source_fps = max(1, int(config.get("source_fps", 30)))
         self.max_latency_ms = float(config.get("max_latency_ms", 250))
         self.software_threads = int(config.get("software_decoder_threads", 2))
         self.failure_policy = str(
@@ -282,14 +294,16 @@ class _GstreamerBackend:
             for camera in self.CAMERAS
         }
         self._awaiting_keyframe = {
-            camera: False for camera in self.CAMERAS
+            camera: True for camera in self.CAMERAS
         }
         self._stop_event = threading.Event()
         self._draining_event = threading.Event()
         self._workers: dict[str, threading.Thread] = {}
         self._bus_thread: threading.Thread | None = None
         self._origin_ns = time.monotonic_ns()
-        self._source_pts_origin_ns: int | None = None
+        self._source_pts_origins_ns: dict[str, int | None] = {
+            camera: None for camera in self.CAMERAS
+        }
         self._pipeline_pts_origin_ns: int | None = None
         self._frame_metadata: dict[
             str,
@@ -368,6 +382,8 @@ class _GstreamerBackend:
             raise PreviewBackendError("无法创建预览合成或显示元素")
         if mixer.find_property("background") is not None:
             mixer.set_property("background", 1)
+        if mixer.find_property("start-time-selection") is not None:
+            mixer.set_property("start-time-selection", 1)
         if mixer.find_property("latency") is not None:
             mixer.set_property(
                 "latency",
@@ -446,6 +462,10 @@ class _GstreamerBackend:
         if analysis_enabled:
             elements.update(
                 {
+                    "native_caps": Gst.ElementFactory.make(
+                        "capsfilter",
+                        f"{camera}-native-caps",
+                    ),
                     "tee": Gst.ElementFactory.make("tee", f"{camera}-tee"),
                     "analysis_queue": Gst.ElementFactory.make(
                         "queue",
@@ -491,7 +511,7 @@ class _GstreamerBackend:
             "caps",
             Gst.Caps.from_string(
                 "video/x-h264,stream-format=byte-stream,alignment=au,"
-                f"framerate={self.preview_fps}/1"
+                f"framerate={self.source_fps}/1"
             ),
         )
         parser = elements["parser"]
@@ -512,6 +532,16 @@ class _GstreamerBackend:
             self.decoded_queue_frames,
         )
         if analysis_enabled:
+            elements["native_caps"].set_property(
+                "caps",
+                Gst.Caps.from_string(
+                    native_video_caps(
+                        self.source_width,
+                        self.source_height,
+                        self.source_fps,
+                    )
+                ),
+            )
             analysis_queue = elements["analysis_queue"]
             configure_latest_frame_queue(analysis_queue, True)
             elements["analysis_rate"].set_property("drop-only", True)
@@ -538,8 +568,13 @@ class _GstreamerBackend:
         if analysis_enabled:
             if not appsrc.link(parser) or not parser.link(decoder):
                 raise PreviewBackendError(f"{camera} 无法连接解码输入")
+            native_caps = elements["native_caps"]
             tee = elements["tee"]
-            if not decoder.link(tee) or not tee.link(gst_queue):
+            if (
+                not decoder.link(native_caps)
+                or not native_caps.link(tee)
+                or not tee.link(gst_queue)
+            ):
                 raise PreviewBackendError(f"{camera} 无法连接预览分支")
             preview_ordered = [
                 gst_queue,
@@ -687,7 +722,9 @@ class _GstreamerBackend:
         if result == Gst.StateChangeReturn.FAILURE:
             raise PreviewBackendError("GStreamer 预览 Pipeline 启动失败")
         self._origin_ns = time.monotonic_ns()
-        self._source_pts_origin_ns = None
+        self._source_pts_origins_ns = {
+            camera: None for camera in self.CAMERAS
+        }
         self._pipeline_pts_origin_ns = None
         self._stop_event.clear()
         self._draining_event.clear()
@@ -823,7 +860,7 @@ class _GstreamerBackend:
         duration = Gst.util_uint64_scale_int(
             1,
             Gst.SECOND,
-            self.preview_fps,
+            self.source_fps,
         )
         clock = self.pipeline.get_clock()
         base_time = self.pipeline.get_base_time()
@@ -834,16 +871,10 @@ class _GstreamerBackend:
         with self._counter_lock:
             counters = self._counters[frame.camera]
             source_time_ns = frame.stamp.monotonic_ns
-            if (
-                self._source_pts_origin_ns is None
-                or self._pipeline_pts_origin_ns is None
-            ):
-                self._source_pts_origin_ns = source_time_ns
-                self._pipeline_pts_origin_ns = (
-                    running_time_ns + int(self.preview_jitter_ms * 1_000_000)
-                )
-            pts = self._pipeline_pts_origin_ns + (
-                source_time_ns - self._source_pts_origin_ns
+            pts = self._next_preview_pts(
+                frame.camera,
+                source_time_ns,
+                running_time_ns,
             )
             pts = max(0, pts, counters.last_pipeline_pts_ns + 1)
             counters.last_pipeline_pts_ns = pts
@@ -873,6 +904,22 @@ class _GstreamerBackend:
             if len(self._frame_metadata[frame.camera]) > 512:
                 oldest_pts = min(self._frame_metadata[frame.camera])
                 self._frame_metadata[frame.camera].pop(oldest_pts, None)
+
+    def _next_preview_pts(
+        self,
+        camera: str,
+        source_time_ns: int,
+        running_time_ns: int,
+    ) -> int:
+        if self._pipeline_pts_origin_ns is None:
+            self._pipeline_pts_origin_ns = (
+                running_time_ns + int(self.preview_jitter_ms * 1_000_000)
+            )
+        source_origin_ns = self._source_pts_origins_ns[camera]
+        if source_origin_ns is None:
+            source_origin_ns = source_time_ns
+            self._source_pts_origins_ns[camera] = source_origin_ns
+        return self._pipeline_pts_origin_ns + source_time_ns - source_origin_ns
 
     def _on_analysis_sample(self, sink: Any) -> Any:
         Gst = self._Gst

@@ -120,8 +120,12 @@ class CaptureWindow(QMainWindow):
             )
 
         preview_config = dict(config.get("preview") or {})
+        oak_config = dict(config.get("oak") or {})
         preview_config.update(
             {
+                "source_width": oak_config.get("width", 1920),
+                "source_height": oak_config.get("height", 1080),
+                "source_fps": oak_config.get("sensor_fps", 30),
                 "primary_camera": gesture_config.get(
                     "primary_camera",
                     "cam_a",
