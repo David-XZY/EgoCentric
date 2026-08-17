@@ -91,6 +91,7 @@ preview:
   mixer_latency_ms: 0
   preview_jitter_ms: 80
   decoded_queue_frames: 4
+  rotate_180: true
   diagnostics_enabled: false
 
 gesture:

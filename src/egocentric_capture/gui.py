@@ -57,7 +57,8 @@ class CaptureWindow(QMainWindow):
         self._last_event_loop_tick = time.monotonic()
         self._event_loop_lag_max_ms = 0.0
         self.setWindowTitle(
-            "EgoCentric Data Cockpit" + (" · 模拟模式" if simulate else "")
+            "华智 AI 多模态数据驾驶舱"
+            + (" · 模拟模式" if simulate else "")
         )
         self.resize(1600, 900)
         self.setMinimumSize(1120, 720)
@@ -94,6 +95,7 @@ class CaptureWindow(QMainWindow):
         video_item = root_item.findChild(QQuickItem, "mosaicVideo")
         if video_item is None:
             raise RuntimeError("驾驶舱 QML 缺少 mosaicVideo")
+        self._qml_root = root_item
 
         container = QWidget.createWindowContainer(self.quick_view, self)
         container.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -162,6 +164,16 @@ class CaptureWindow(QMainWindow):
             )
         except PreviewBackendError as exc:
             self.bridge.show_toast(f"预览不可用，原始录制仍可继续：{exc}")
+        root_item.setProperty(
+            "primaryCamera",
+            str(preview_config.get("primary_camera", "cam_a")),
+        )
+        root_item.primaryCameraRequested.connect(
+            self._set_primary_camera
+        )
+        root_item.thumbnailHoverChanged.connect(
+            self._set_thumbnail_hover
+        )
 
         self._connect_signals()
         self.engine = CaptureEngine(
@@ -234,6 +246,23 @@ class CaptureWindow(QMainWindow):
             CaptureState.RECORDING,
         }:
             self.engine.request_stop()
+
+    def _set_primary_camera(self, camera: str) -> None:
+        normalized = str(camera)
+        if self.preview_controller is None:
+            return
+        self.preview_controller.set_cockpit_layout(normalized)
+        self.bridge.show_toast(
+            normalized.upper().replace("_", " ") + " 已设为主视角"
+        )
+
+    def _set_thumbnail_hover(self, camera: str, hovered: bool) -> None:
+        if self.preview_controller is None:
+            return
+        self.preview_controller.set_camera_alpha(
+            str(camera),
+            1.0 if hovered else 0.3,
+        )
 
     def _apply_advanced(self, values: dict[str, Any]) -> None:
         self.config.setdefault("wearable", {})["port"] = str(values["port"])
@@ -370,7 +399,7 @@ class CaptureWindow(QMainWindow):
 def run_gui(config: dict[str, Any], *, simulate: bool = False) -> int:
     os.environ.setdefault("QT_QUICK_CONTROLS_STYLE", "Fusion")
     application = QApplication.instance() or QApplication(sys.argv)
-    application.setApplicationName("EgoCentric Capture")
+    application.setApplicationName("华智 AI 多模态数据驾驶舱")
     application.setPalette(_dark_palette())
     QQuickWindow.setGraphicsApi(
         QSGRendererInterface.GraphicsApi.OpenGL

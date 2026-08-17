@@ -27,6 +27,7 @@ HARDWARE_DECODER_CANDIDATES = (
     "nvh264dec",
 )
 SOFTWARE_DECODER = "avdec_h264"
+AUXILIARY_CAMERA_ALPHA = 0.3
 _QML_TYPE_REGISTRATION_SINK: Any = None
 
 
@@ -145,7 +146,7 @@ def cockpit_layout(
     }
     for index, camera in enumerate(auxiliaries):
         layout[camera] = {
-            "alpha": 1.0,
+            "alpha": AUXILIARY_CAMERA_ALPHA,
             "x": start_x + index * (thumbnail_width + gap),
             "y": y,
             "width": thumbnail_width,
@@ -226,6 +227,7 @@ class _GstreamerBackend:
         self.source_width = max(1, int(config.get("source_width", 1920)))
         self.source_height = max(1, int(config.get("source_height", 1080)))
         self.source_fps = max(1, int(config.get("source_fps", 30)))
+        self.rotate_180 = bool(config.get("rotate_180", True))
         self.max_latency_ms = float(config.get("max_latency_ms", 250))
         self.software_threads = int(config.get("software_decoder_threads", 2))
         self.failure_policy = str(
@@ -275,6 +277,7 @@ class _GstreamerBackend:
         self._sink_stats_last_rendered = 0
         self._sink_stats_last_dropped = 0
         self.branches: dict[str, _Branch] = {}
+        self._primary_camera = "cam_a"
         self._counters = {
             camera: _PreviewCounters() for camera in self.CAMERAS
         }
@@ -337,6 +340,7 @@ class _GstreamerBackend:
             "h264parse",
             "glupload",
             "glcolorconvert",
+            "glvideoflip",
             "glvideomixer",
         ):
             if Gst.ElementFactory.find(required) is None:
@@ -454,6 +458,10 @@ class _GstreamerBackend:
                 "glcolorconvert",
                 f"{camera}-convert",
             ),
+            "flip": Gst.ElementFactory.make(
+                "glvideoflip",
+                f"{camera}-flip",
+            ),
         }
         analysis_enabled = (
             self.analysis_callback is not None
@@ -531,6 +539,10 @@ class _GstreamerBackend:
             self.latest_frame_only,
             self.decoded_queue_frames,
         )
+        elements["flip"].set_property(
+            "video-direction",
+            2 if self.rotate_180 else 0,
+        )
         if analysis_enabled:
             elements["native_caps"].set_property(
                 "caps",
@@ -580,6 +592,7 @@ class _GstreamerBackend:
                 gst_queue,
                 elements["upload"],
                 elements["convert"],
+                elements["flip"],
             ]
             analysis_ordered = [
                 elements["analysis_queue"],
@@ -610,6 +623,7 @@ class _GstreamerBackend:
                 gst_queue,
                 elements["upload"],
                 elements["convert"],
+                elements["flip"],
             ]
             for previous, current in zip(ordered, ordered[1:], strict=False):
                 if not previous.link(current):
@@ -627,13 +641,13 @@ class _GstreamerBackend:
             self._on_stage_buffer,
             (camera, "decoded"),
         )
-        convert_src = elements["convert"].get_static_pad("src")
-        convert_src.add_probe(
+        preview_src = elements["flip"].get_static_pad("src")
+        preview_src.add_probe(
             Gst.PadProbeType.BUFFER,
             self._on_branch_buffer,
             camera,
         )
-        ghost_pad = Gst.GhostPad.new("src", convert_src)
+        ghost_pad = Gst.GhostPad.new("src", preview_src)
         if ghost_pad is None or not branch_bin.add_pad(ghost_pad):
             raise PreviewBackendError(f"{camera} 无法创建合成输出 Pad")
         return _Branch(camera, branch_bin, appsrc, gst_queue)
@@ -660,6 +674,7 @@ class _GstreamerBackend:
     def set_cockpit_layout(self, primary_camera: str = "cam_a") -> None:
         if primary_camera not in self.CAMERAS:
             primary_camera = "cam_a"
+        self._primary_camera = primary_camera
         layout = cockpit_layout(
             self.mosaic_width,
             self.mosaic_height,
@@ -676,6 +691,16 @@ class _GstreamerBackend:
             pad.set_property("width", values["width"])
             pad.set_property("height", values["height"])
             pad.set_property("zorder", values["z"])
+
+    def set_camera_alpha(self, camera: str, alpha: float) -> None:
+        branch = self.branches.get(camera)
+        if branch is None or branch.mixer_pad is None:
+            return
+        value = 1.0 if camera == self._primary_camera else alpha
+        branch.mixer_pad.set_property(
+            "alpha",
+            max(AUXILIARY_CAMERA_ALPHA, min(1.0, value)),
+        )
 
     def set_mode(self, single: bool, camera: str) -> None:
         if camera not in self.CAMERAS:
@@ -942,6 +967,8 @@ class _GstreamerBackend:
             image = array.reshape((height, width, 3)).copy()
         finally:
             buffer.unmap(mapping)
+        if self.rotate_180:
+            image = np.rot90(image, 2).copy()
         self.analysis_callback(image, time.monotonic_ns())
         return Gst.FlowReturn.OK
 
@@ -1220,6 +1247,9 @@ class GstreamerPreviewController(QObject):
 
     def set_cockpit_layout(self, primary_camera: str = "cam_a") -> None:
         self.backend.set_cockpit_layout(primary_camera)
+
+    def set_camera_alpha(self, camera: str, alpha: float) -> None:
+        self.backend.set_camera_alpha(camera, alpha)
 
     def set_health(self, _health: PreviewHealth) -> None:
         return

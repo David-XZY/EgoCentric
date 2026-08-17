@@ -27,6 +27,10 @@ datas = [
         "egocentric_capture/assets",
     ),
     (
+        str(source / "egocentric_capture" / "assets" / "huazhi_logo.png"),
+        "egocentric_capture/assets",
+    ),
+    (
         str(
             source
             / "egocentric_capture"

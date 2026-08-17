@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import queue
 import threading
+from types import SimpleNamespace
 
 from egocentric_capture.models import CameraFrame, ClockStamp
 from egocentric_capture.preview.gstreamer import (
+    AUXILIARY_CAMERA_ALPHA,
     HARDWARE_DECODER_CANDIDATES,
     SOFTWARE_DECODER,
     _GstreamerBackend,
@@ -98,6 +100,9 @@ def test_cockpit_layout_uses_main_camera_and_three_centered_thumbnails() -> None
         "z": 0,
     }
     thumbnails = [layout[name] for name in ("cam_b", "cam_c", "cam_d")]
+    assert all(
+        item["alpha"] == AUXILIARY_CAMERA_ALPHA for item in thumbnails
+    )
     assert all(item["width"] == thumbnails[0]["width"] for item in thumbnails)
     assert all(item["height"] == thumbnails[0]["height"] for item in thumbnails)
     assert [item["z"] for item in thumbnails] == [1, 2, 3]
@@ -181,3 +186,23 @@ def test_preview_uses_independent_source_origins_for_mixer_alignment() -> None:
     assert cam_a_first == cam_b_first
     assert cam_a_next - cam_a_first == 33_000_000
     assert cam_b_next - cam_b_first == 33_000_000
+
+
+def test_thumbnail_hover_changes_auxiliary_alpha_but_not_primary() -> None:
+    primary_pad = _FakeElement()
+    auxiliary_pad = _FakeElement()
+    backend = object.__new__(_GstreamerBackend)
+    backend._primary_camera = "cam_a"
+    backend.branches = {
+        "cam_a": SimpleNamespace(mixer_pad=primary_pad),
+        "cam_b": SimpleNamespace(mixer_pad=auxiliary_pad),
+    }
+
+    backend.set_camera_alpha("cam_b", 1.0)
+    assert auxiliary_pad.properties["alpha"] == 1.0
+
+    backend.set_camera_alpha("cam_b", 0.0)
+    assert auxiliary_pad.properties["alpha"] == AUXILIARY_CAMERA_ALPHA
+
+    backend.set_camera_alpha("cam_a", AUXILIARY_CAMERA_ALPHA)
+    assert primary_pad.properties["alpha"] == 1.0

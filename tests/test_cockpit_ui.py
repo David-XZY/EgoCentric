@@ -83,4 +83,6 @@ def test_cockpit_qml_loads_and_contains_video_surface(qtbot) -> None:
     root = view.rootObject()
     assert isinstance(root, QQuickItem)
     assert root.findChild(QQuickItem, "mosaicVideo") is not None
+    assert root.findChild(QQuickItem, "huazhiLogo") is not None
+    assert root.property("primaryCamera") == "cam_a"
     view.setSource(QUrl())

@@ -18,6 +18,30 @@ Rectangle {
     readonly property color textColor: "#eefbfa"
     readonly property color mutedColor: "#9eb3b4"
     readonly property int monoSize: Math.max(9, Math.round(height / 90))
+    property string primaryCamera: "cam_a"
+    readonly property real thumbnailStartRatio: 0.3148
+    readonly property real thumbnailStepRatio: 0.125
+    readonly property real thumbnailWidthRatio: 0.1195
+    readonly property real thumbnailStripLeft: thumbnailStartRatio * width
+    readonly property real thumbnailStripRight: (
+        thumbnailStartRatio
+        + thumbnailStepRatio * 2
+        + thumbnailWidthRatio
+    ) * width
+    readonly property var cameraCatalog: [
+        { camera: "cam_a", name: "CAM A / RGB" },
+        { camera: "cam_b", name: "CAM B / RGB" },
+        { camera: "cam_c", name: "CAM C / MONO" },
+        { camera: "cam_d", name: "CAM D / DEPTH" }
+    ]
+    readonly property var auxiliaryCameras: {
+        const cameras = []
+        for (let index = 0; index < cameraCatalog.length; index += 1) {
+            if (cameraCatalog[index].camera !== primaryCamera)
+                cameras.push(cameraCatalog[index])
+        }
+        return cameras
+    }
     readonly property var handLinks: [
         [0, 1], [1, 2], [2, 3], [3, 4],
         [0, 5], [5, 6], [6, 7], [7, 8],
@@ -26,6 +50,9 @@ Rectangle {
         [0, 17], [17, 18], [18, 19], [19, 20],
         [5, 9], [9, 13], [13, 17], [17, 0]
     ]
+
+    signal primaryCameraRequested(string camera)
+    signal thumbnailHoverChanged(string camera, bool hovered)
 
     Image {
         anchors.fill: parent
@@ -137,7 +164,22 @@ Rectangle {
         Rectangle {
             anchors.bottom: parent.bottom
             anchors.left: parent.left
-            anchors.right: parent.right
+            width: Math.max(
+                0,
+                root.thumbnailStripLeft - edgeFrame.x - 10
+            )
+            height: 1
+            color: root.cyan
+            opacity: 0.72
+        }
+        Rectangle {
+            id: bottomRightEdge
+            anchors.bottom: parent.bottom
+            x: Math.max(
+                0,
+                root.thumbnailStripRight - edgeFrame.x + 10
+            )
+            width: Math.max(0, parent.width - x)
             height: 1
             color: root.cyan
             opacity: 0.72
@@ -162,37 +204,102 @@ Rectangle {
             anchors.right: parent.right
             anchors.bottom: parent.bottom
         }
+
+        Repeater {
+            model: 15
+
+            Rectangle {
+                x: 0
+                y: 18 + index * Math.max(22, (edgeFrame.height - 60) / 14)
+                width: index % 4 === 0 ? 15 : 7
+                height: 1
+                color: root.cyan
+                opacity: index % 4 === 0 ? 0.58 : 0.28
+            }
+        }
+
+        Repeater {
+            model: 15
+
+            Rectangle {
+                anchors.right: parent.right
+                y: 18 + index * Math.max(22, (edgeFrame.height - 60) / 14)
+                width: index % 4 === 0 ? 15 : 7
+                height: 1
+                color: root.blue
+                opacity: index % 4 === 0 ? 0.58 : 0.28
+            }
+        }
+    }
+
+    Text {
+        x: -58
+        y: root.height * 0.53
+        rotation: -90
+        text: "HUAZHI AI // SENSOR FUSION BUS 01"
+        color: root.cyan
+        font.family: "monospace"
+        font.pixelSize: 8
+        opacity: 0.48
+    }
+
+    Text {
+        anchors.right: parent.right
+        anchors.rightMargin: -60
+        y: root.height * 0.53
+        rotation: 90
+        text: "REAL-TIME MOTION INTELLIGENCE // BUS 02"
+        color: root.blue
+        font.family: "monospace"
+        font.pixelSize: 8
+        opacity: 0.48
+    }
+
+    Rectangle {
+        anchors.horizontalCenter: parent.horizontalCenter
+        y: 97
+        width: primaryViewText.implicitWidth + 30
+        height: 22
+        color: "#b0061116"
+        border.color: "#4952f4df"
+        border.width: 1
+
+        Text {
+            id: primaryViewText
+            anchors.centerIn: parent
+            text: "主视角 / PRIMARY · " + root.primaryCamera.toUpperCase()
+            color: root.textColor
+            font.family: "monospace"
+            font.pixelSize: root.monoSize
+        }
     }
 
     Row {
         id: brand
         x: 20
-        y: 24
-        spacing: 14
+        y: 14
+        width: Math.min(560, root.width * 0.46)
+        height: 64
+        spacing: 13
 
-        Item {
-            width: 38
-            height: 38
-            rotation: 45
+        Image {
+            id: huazhiLogo
+            objectName: "huazhiLogo"
+            width: 170
+            height: 58
+            anchors.verticalCenter: parent.verticalCenter
+            source: "huazhi_logo.png"
+            fillMode: Image.PreserveAspectFit
+            smooth: true
+            mipmap: true
+        }
 
-            Rectangle {
-                anchors.fill: parent
-                color: "#172c31"
-                border.color: root.cyan
-                border.width: 1
-            }
-            Rectangle {
-                width: 2
-                height: parent.height
-                color: root.cyan
-                anchors.horizontalCenter: parent.horizontalCenter
-            }
-            Rectangle {
-                width: parent.width
-                height: 2
-                color: root.cyan
-                anchors.verticalCenter: parent.verticalCenter
-            }
+        Rectangle {
+            width: 1
+            height: 42
+            anchors.verticalCenter: parent.verticalCenter
+            color: root.cyan
+            opacity: 0.52
         }
 
         Column {
@@ -200,23 +307,29 @@ Rectangle {
             spacing: 4
 
             Text {
-                text: "EGOCENTRIC // DATA COCKPIT"
+                text: "华智（无锡）人工智能科技有限公司"
                 color: root.textColor
-                font.pixelSize: 15
+                font.pixelSize: 14
                 font.bold: true
             }
             Text {
-                text: "MULTIMODAL HUMAN MOTION ACQUISITION"
+                text: "HUAZHI AI // MULTIMODAL DATA COCKPIT"
                 color: root.mutedColor
                 font.family: "monospace"
                 font.pixelSize: 9
+            }
+            Rectangle {
+                width: 128
+                height: 1
+                color: root.blue
+                opacity: 0.62
             }
         }
     }
 
     Button {
         id: drawerButton
-        x: brand.x + brand.width + 18
+        x: brand.x + brand.width + 10
         y: 28
         width: 38
         height: 34
@@ -348,25 +461,25 @@ Rectangle {
 
     Column {
         x: 37
-        y: 116
+        y: Math.max(340, root.height * 0.38)
         spacing: 11
 
         MetricRow {
-            labelText: "OAK-4P"
+            labelText: "OAK-4P VISION"
             valueText: uiBridge.deviceMetrics.length > 0
                 ? uiBridge.deviceMetrics[0].state : "CHECKING"
         }
         MetricRow {
-            labelText: "WRIST BAND"
+            labelText: "EMG BAND"
             valueText: uiBridge.deviceMetrics.length > 5
                 ? uiBridge.deviceMetrics[5].rate : "-- HZ"
         }
         MetricRow {
-            labelText: "WRITE"
+            labelText: "WRITE LINK"
             valueText: uiBridge.writeRateText
         }
         MetricRow {
-            labelText: "STORAGE"
+            labelText: "FREE SPACE"
             valueText: uiBridge.storageText
             dotColor: root.amber
         }
@@ -375,22 +488,22 @@ Rectangle {
     Column {
         anchors.right: parent.right
         anchors.rightMargin: 37
-        y: 116
+        y: Math.max(340, root.height * 0.38)
         spacing: 11
 
         MetricRow {
             reverse: true
-            labelText: "FPS"
+            labelText: "CAPTURE FPS"
             valueText: uiBridge.fpsText
         }
         MetricRow {
             reverse: true
-            labelText: "SYNC"
+            labelText: "SYNC ERROR"
             valueText: uiBridge.syncText
         }
         MetricRow {
             reverse: true
-            labelText: "HAND CONF"
+            labelText: "HAND CONFIDENCE"
             valueText: uiBridge.gestureConfidenceText
         }
         MetricRow {
@@ -499,20 +612,20 @@ Rectangle {
 
     EmgPanel {
         x: 32
-        y: Math.max(215, root.height * 0.255)
+        y: 108
         width: Math.min(350, root.width * 0.23)
-        height: Math.min(200, root.height * 0.22)
-        title: "LEFT EMG"
+        height: Math.min(190, root.height * 0.21)
+        title: "左臂肌电 / EMG 01–04"
         channels: uiBridge.leftEmg
     }
 
     EmgPanel {
         anchors.right: parent.right
         anchors.rightMargin: 32
-        y: Math.max(215, root.height * 0.255)
+        y: 108
         width: Math.min(350, root.width * 0.23)
-        height: Math.min(200, root.height * 0.22)
-        title: "RIGHT EMG"
+        height: Math.min(190, root.height * 0.21)
+        title: "右臂肌电 / EMG 05–08"
         rightAligned: true
         channels: uiBridge.rightEmg
         colors: [root.blue, "#c69cff", "#ff7f68", "#d8f4f1"]
@@ -523,6 +636,36 @@ Rectangle {
         property var handData: ({})
         property color lineColor: root.cyan
         property string fallbackLabel: ""
+
+        Rectangle {
+            anchors.fill: parent
+            color: "#19040d11"
+            border.color: Qt.rgba(
+                handPanel.lineColor.r,
+                handPanel.lineColor.g,
+                handPanel.lineColor.b,
+                0.24
+            )
+            border.width: 1
+        }
+
+        Rectangle {
+            x: 0
+            y: 0
+            width: 42
+            height: 2
+            color: handPanel.lineColor
+            opacity: 0.72
+        }
+
+        Rectangle {
+            x: 0
+            y: 0
+            width: 2
+            height: 26
+            color: handPanel.lineColor
+            opacity: 0.72
+        }
 
         Text {
             x: 14
@@ -548,6 +691,29 @@ Rectangle {
                 const points = handPanel.handData.landmarks || []
                 if (points.length < 21)
                     return
+                let minX = points[0].x
+                let maxX = points[0].x
+                let minY = points[0].y
+                let maxY = points[0].y
+                for (let boundIndex = 1; boundIndex < points.length; boundIndex += 1) {
+                    minX = Math.min(minX, points[boundIndex].x)
+                    maxX = Math.max(maxX, points[boundIndex].x)
+                    minY = Math.min(minY, points[boundIndex].y)
+                    maxY = Math.max(maxY, points[boundIndex].y)
+                }
+                const sourceCenterX = (minX + maxX) / 2
+                const sourceCenterY = (minY + maxY) / 2
+                const sourceSpan = Math.max(0.001, maxX - minX, maxY - minY)
+                const targetSpan = Math.min(width * 0.62, height * 0.74)
+                const fixedScale = targetSpan / sourceSpan
+                const targetCenterX = width / 2
+                const targetCenterY = height * 0.53
+                function displayX(point) {
+                    return targetCenterX + (point.x - sourceCenterX) * fixedScale
+                }
+                function displayY(point) {
+                    return targetCenterY + (point.y - sourceCenterY) * fixedScale
+                }
                 const stale = handPanel.handData.staleMs || 0
                 context.globalAlpha = stale <= 250
                     ? 1 : Math.max(0, 1 - (stale - 250) / 250)
@@ -559,16 +725,16 @@ Rectangle {
                     const first = points[link[0]]
                     const second = points[link[1]]
                     context.beginPath()
-                    context.moveTo(first.x * width, first.y * height)
-                    context.lineTo(second.x * width, second.y * height)
+                    context.moveTo(displayX(first), displayY(first))
+                    context.lineTo(displayX(second), displayY(second))
                     context.stroke()
                 }
                 for (let pointIndex = 0; pointIndex < points.length; pointIndex += 1) {
                     const point = points[pointIndex]
                     context.beginPath()
                     context.arc(
-                        point.x * width,
-                        point.y * height,
+                        displayX(point),
+                        displayY(point),
                         Math.max(2, Math.min(width, height) / 70),
                         0,
                         Math.PI * 2
@@ -696,14 +862,15 @@ Rectangle {
     }
 
     Repeater {
-        model: [
-            { name: "CAM B / RGB", x: 0.3148 },
-            { name: "CAM C / MONO", x: 0.4398 },
-            { name: "CAM D / DEPTH", x: 0.5648 }
-        ]
+        model: root.auxiliaryCameras
 
         delegate: Item {
-            x: modelData.x * root.width
+            id: cameraThumbnail
+            objectName: "cameraThumbnail_" + modelData.camera
+            x: (
+                root.thumbnailStartRatio
+                + index * root.thumbnailStepRatio
+            ) * root.width
             y: 0.8556 * root.height
             width: 0.1195 * root.width
             height: 0.1194 * root.height
@@ -713,6 +880,15 @@ Rectangle {
                 color: "transparent"
                 border.color: "#4f9fe4df"
                 border.width: 1
+            }
+            Rectangle {
+                anchors.fill: parent
+                color: thumbnailMouse.containsMouse ? "#1752f4df" : "transparent"
+                opacity: thumbnailMouse.containsMouse ? 0.32 : 0
+
+                Behavior on opacity {
+                    NumberAnimation { duration: 120 }
+                }
             }
             Text {
                 x: 7
@@ -727,10 +903,30 @@ Rectangle {
                 anchors.rightMargin: 7
                 anchors.bottom: parent.bottom
                 anchors.bottomMargin: 6
-                text: "ACTIVE"
-                color: root.cyan
+                text: thumbnailMouse.containsMouse ? "设为主视角" : "AUX / 30%"
+                color: thumbnailMouse.containsMouse ? root.lime : root.cyan
                 font.family: "monospace"
                 font.pixelSize: Math.max(7, root.monoSize - 2)
+            }
+
+            MouseArea {
+                id: thumbnailMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+
+                onEntered: root.thumbnailHoverChanged(
+                    modelData.camera,
+                    true
+                )
+                onExited: root.thumbnailHoverChanged(
+                    modelData.camera,
+                    false
+                )
+                onClicked: {
+                    root.primaryCamera = modelData.camera
+                    root.primaryCameraRequested(modelData.camera)
+                }
             }
         }
     }
